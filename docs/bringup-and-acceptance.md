@@ -4,19 +4,20 @@
 
 ## Windows 开发环境
 
-本机 PowerShell 已找到 Git 2.53.0.windows.1、CMake 3.29.2、Ninja 1.11.1，以及桌面编译器 MinGW GCC 12.1.0（x86_64）和 Clang 18.1.8。当前 PATH 未找到 `arm-none-eabi-gcc`、`cube`、`STM32_Programmer_CLI`。这些是文档阶段的检查结果，工具链版本以首个能复现的固件构建为准。
+本机已验证 CubeCLI 0.10.4。项目锁定 GNU Tools for STM32 14.3.1+st.2、CMake 4.3.1+st.1 和 Ninja 1.13.2+st.1。新机器先安装 CubeCLI，在新终端从仓库根目录执行下列命令。普通构建直接使用仓库中的启动文件、链接脚本和驱动源码。[CubeCLI 安装](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_Installation.html) · [项目工具锁](../firmware/.settings/bundles-lock.store.json)
 
-1. 用经典 STM32CubeMX 建立 STM32F103RCT6 的 CMake 工程，选择 STM32CubeF1 HAL，在 `.ioc` 核对时钟、SWD、TIM2 部分重映射和 I2C1 重映射。将 `.ioc`、生成的启动文件、链接脚本、所用驱动源码、CMake 配置与预设一并纳入版本管理，记录 CubeMX 和 CubeF1 版本。[STM32CubeMX](https://www.st.com/content/st_com/en/stm32cubemx.html) · [STM32CubeF1](https://github.com/STMicroelectronics/STM32CubeF1)
-2. 按 ST 的 Windows 安装说明准备 STM32CubeCLI，在新终端用 `cube --version` 核对。在工程中锁定 GNU Tools for STM32（Arm GCC）、CMake 和 Ninja，保存 `.settings/bundles.store.json` 与 `.settings/bundles-lock.store.json`。VS Code 和终端使用同一预设，桌面编译器用来测共用的编解码和控制逻辑。[CubeCLI 安装](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_Installation.html) · [项目与工具链锁定示例](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_First_Project.html)
-3. 工程含上述锁文件和 `Debug` 预设后，从干净工作目录的工程根目录执行下列命令。记录工具版本和构建日志，核对输出 ELF 的目标芯片、Flash/RAM 布局。该 ELF 同时用于下载校验和源码断点调试。
+```powershell
+cd firmware
+cube bundle install --project
+cube cmake --preset Debug
+cube cmake --build --preset Debug
+```
 
-   ```powershell
-   cube bundle install --project
-   cube cmake --preset Debug
-   cube cmake --build --preset Debug
-   ```
+输出为 `firmware/build/Debug/baize_base.elf`。将两条构建命令的预设改为 `Release` 可生成优化版本。目标为 Cortex-M3 / Thumb-2，Flash 从 `0x08000000` 开始共 256 KiB，SRAM 从 `0x20000000` 开始共 48 KiB，初始栈顶为 `0x2000C000`。[链接脚本](../firmware/STM32F103xx_FLASH.ld)
 
-4. 在设备管理器核对烧录器型号。若能作为 ST-LINK 使用，装配套驱动，用 STM32CubeProgrammer 的 `STM32_Programmer_CLI -l` 枚举，用 ST-LINK GDB server 与 Arm GDB 做源码断点调试。另记录上层 USB 数据口的 CH340 COM 口，供独立联调工具按 115200、8N1 打开。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html) · [ST-LINK GDB server](https://www.st.com/resource/en/user_manual/um2576-stm32cubeide-stlink-gdb-server-stmicroelectronics.pdf)
+修改外设时用经典 CubeMX 6.19.0 打开工程配置，使用 STM32CubeF1 1.8.7 重新生成。目前已配置 SWD、8 MHz 晶振倍频至 72 MHz、115200 的 USART2、四路编码器输入、PA4 电压采样和重映射的 I2C1。TIM8 与电机方向脚留待停机电平试验。首次上板在电机动力隔离条件下进行。[CubeMX 工程](../firmware/baize_base.ioc) · [STM32CubeF1 1.8.7](https://github.com/STMicroelectronics/STM32CubeF1/tree/v1.8.7)
+
+上板时在设备管理器核对烧录器型号。若能作为 ST-LINK 使用，装配套驱动，用 STM32CubeProgrammer 的 `STM32_Programmer_CLI -l` 枚举，用 ST-LINK GDB server 与 Arm GDB 做源码断点调试。另记录上层 USB 数据口的 CH340 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
 
 ## 首次 SWD 连接与上电
 

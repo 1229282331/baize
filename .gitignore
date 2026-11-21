@@ -6,3 +6,7 @@
 **/MDK-ARM/STM32F103/*
 !**/MDK-ARM/STM32F103/*.hex
 !**/MDK-ARM/STM32F103/*.sct
+
+# CMake 构建输出与 CubeMX 的本机生成记录
+/firmware/build/
+/firmware/.mxproject
