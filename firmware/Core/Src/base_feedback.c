@@ -1,5 +1,6 @@
 #include "base_feedback.h"
 #include "main.h"
+#include "mpu6050.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern UART_HandleTypeDef huart2;
@@ -7,6 +8,8 @@ extern UART_HandleTypeDef huart2;
 static BaizeReceiver receiver;
 static uint8_t rx_byte;
 static uint8_t tx_wire[BAIZE_WIRE_MAX];
+/* One latest sample per stream. A nonzero type means it is waiting for TX. */
+static BaizeFrame status_frame, imu_frame;
 static volatile uint8_t stop_reason = BAIZE_RESET;
 static bool adc_calibrated;
 
@@ -57,24 +60,27 @@ static uint16_t sample_supply_mv(void)
     return mv;
 }
 
-void base_feedback_send(const BaizeEncoders *encoders)
+void base_feedback_status(const BaizeEncoders *encoders)
 {
-    uint16_t supply_mv = sample_supply_mv();
+    status_frame.type = BAIZE_STATUS;
+    BaizeStatus *status = &status_frame.status;
+    status->sample_ms = encoders->sample_ms;
+    status->drive_state = BAIZE_DISABLED;
+    status->stop_reason = stop_reason;
+    status->supply_mv = sample_supply_mv();
+    for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
+        status->angle_mrad[i] = encoders->angle_mrad[i];
+        status->velocity_mrad_s[i] = encoders->velocity_mrad_s[i];
+    }
+}
+
+void base_feedback_poll(uint32_t now_ms)
+{
+    if (mpu6050_poll(now_ms, &imu_frame.imu)) imu_frame.type = BAIZE_IMU;
     if (huart2.gState != HAL_UART_STATE_READY) return;
 
-    BaizeFrame frame = {
-        .type = BAIZE_STATUS,
-        .status = {
-            .sample_ms = encoders->sample_ms,
-            .drive_state = BAIZE_DISABLED,
-            .stop_reason = stop_reason,
-            .supply_mv = supply_mv
-        }
-    };
-    for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
-        frame.status.angle_mrad[i] = encoders->angle_mrad[i];
-        frame.status.velocity_mrad_s[i] = encoders->velocity_mrad_s[i];
-    }
-    uint16_t size = (uint16_t)baize_encode(&frame, tx_wire);
-    HAL_UART_Transmit_IT(&huart2, tx_wire, size);
+    BaizeFrame *next = status_frame.type ? &status_frame : &imu_frame;
+    if (next->type == 0) return;
+    uint16_t size = (uint16_t)baize_encode(next, tx_wire);
+    if (HAL_UART_Transmit_IT(&huart2, tx_wire, size) == HAL_OK) next->type = 0;
 }

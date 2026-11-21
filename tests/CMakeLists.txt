@@ -21,3 +21,12 @@ foreach(area IN ITEMS protocol drive encoders session)
     target_link_libraries(test_${area} PRIVATE baize_logic)
     add_test(NAME ${area} COMMAND test_${area})
 endforeach()
+
+if(UNIX)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_subdirectory(../host host)
+        add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
+    endif()
+endif()
