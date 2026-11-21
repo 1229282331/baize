@@ -26,9 +26,9 @@
 | 2 左后 | 左上 | M3 / JP4 | TIM8_CH2 · PC7 | PC14 · `M2_ENB` | TIM5 · PA0 / PA1 |
 | 3 右后 | 左下 | M4 / JP3 | TIM8_CH1 · PC6 | PC15 · `M1_ENB` | TIM3 · PA6 / PA7 |
 
-JP5 的 3、4 脚依次接 CH2、CH1，其余三个插座依次接 CH1、CH2。固件按表分配通道，编码器正方向以架空手转为准。TIM2 选择部分重映射 1，调试端口选择 Serial Wire，释放 PA15、PB3 并保留 PA13/SWDIO、PA14/SWCLK。PC13～PC15 作为低速方向输出，PC14、PC15 已用于电机，LSE 保持关闭。[STM32F103xC 数据手册](https://www.st.com/resource/en/datasheet/stm32f103rc.pdf) · [STM32F1 参考手册](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101-stm32f102-stm32f103-stm32f105-and-stm32f107-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
+JP5 的 3、4 脚依次接 CH2、CH1，其余三个插座依次接 CH1、CH2。固件按表分配通道。TIM2 选择部分重映射 1，调试端口选择 Serial Wire，释放 PA15、PB3 并保留 PA13/SWDIO、PA14/SWCLK。PC13～PC15 作为低速方向输出，PC14、PC15 已用于电机，LSE 保持关闭。[STM32F103xC 数据手册](https://www.st.com/resource/en/datasheet/stm32f103rc.pdf) · [STM32F1 参考手册](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101-stm32f102-stm32f103-stm32f105-and-stm32f107-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
 
-**停机电平要上板测。** 旧工程的 TIM8 采用高有效 PWM1，`PSC=2`、`ARR=1999`，初始化和四轮零目标都写 `CCR=2000`。按 72 MHz 定时器时钟计算，PWM 频率为 12 kHz，写入该值后已使能的输出脚为持续高电平。新固件先测复位、未使能、停机时的 PWM 与方向组合，再架空确认静止轮保持静止，并记录转动中的车轮是滑行还是制动。[厂商 TIM8 初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim8.c) · [PWM 通道和上限](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/MotorControl.h) · [厂商零目标处理](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c)
+旧工程的 TIM8 采用高有效 PWM1，`PSC=2`、`ARR=1999`，初始化和四轮零目标都写 `CCR=2000`。按 72 MHz 定时器时钟计算，PWM 频率为 12 kHz，写入该值后已使能的输出脚为持续高电平。新固件接入驱动后，在四轮架空、电机接线保留的状态下核对复位、未使能和停机时的 PWM 与方向组合。观察未使能时车轮能否保持静止，以及运动中停机时的滑行或制动表现。[厂商 TIM8 初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim8.c) · [PWM 通道和上限](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/MotorControl.h) · [厂商零目标处理](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c)
 
 ### 电源采样与 USB
 
@@ -65,4 +65,6 @@ Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新
 
 随车图纸标注轮径约 152.4 mm，旧代码中轮周长为 0.496371 m，折合轮径约 158.0 mm，两者相差约 3.7%。整车里程计使用实际行驶测得的有效滚动周长。四轮滑移转向的有效轮距通过实际转角标定，并记录地面与载荷条件。[底盘尺寸，资料第 1 页](四轮灵风小车资料/四轮小车资料简介.pdf) · [原厂运动学参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/Kinematics_4WD.h)
 
-厂商调速头文件采用每圈 144000 计数。实车以轮胎标记转过整圈的累计计数确定各轮换算系数。调速周期、指令超时时限、PI 增益和速度上限也随实测版本发布。机械臂尚未装车，先形成空载记录，安装后按实际姿态和载荷复测。[厂商计数参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [环境准备与实车验收](bringup-and-acceptance.md)
+编码器沿用厂商默认值，输出轴每圈 144000 计数，M1～M4 的原始计数依次乘以 −1、−1、−1、+1 换算为前进为正的轮角。原始累计计数保留，轮角按累计值换算到最近的 mrad。四个定时器均采用双路编码器模式，两个输入的数字滤波值均为 15。轮序和方向在首次架空单轮点动时核对，发现比例偏差再用独立观察的转数复核每圈计数。[固件换算参数](../firmware/control/baize_encoders.c) · [厂商计数参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [厂商反馈符号](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [厂商编码器输入配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim4.c)
+
+厂商调速周期为 5 ms，参考程序的转速限幅为 170 rpm。PI 增益取决于反馈单位、控制周期和输出定义，接入闭环后依据响应调整。命令超时、实际速度上限和停稳距离随验收版本记录。机械臂尚未装车，先形成空载记录，安装后按实际姿态和载荷复测。[厂商调速配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [环境准备与实车验收](bringup-and-acceptance.md)
