@@ -42,9 +42,28 @@ static void accumulate_past_32_bits(void)
     assert(encoders.counts[0] > INT32_MAX && encoders.counts[1] < INT32_MIN);
 }
 
+static void vendor_wheel_angles(void)
+{
+    /* Six steps of 24000 raw counts make one output revolution. */
+    for (int direction = -1; direction <= 1; direction += 2) {
+        BaizeEncoders encoders = {0};
+        for (int step = 1; step <= 6; ++step) {
+            int ticks = direction * step * 24000;
+            uint16_t counter[BAIZE_WHEELS] = {
+                (uint16_t)(-ticks), (uint16_t)(-ticks), (uint16_t)(-ticks), (uint16_t)ticks
+            };
+            baize_encoders_sample(&encoders, counter, (uint32_t)step);
+        }
+        for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
+            assert(encoders.angle_mrad[i] == direction * 6283);
+        }
+    }
+}
+
 int main(void)
 {
     reverse_across_wrap();
     accumulate_past_32_bits();
+    vendor_wheel_angles();
     return 0;
 }

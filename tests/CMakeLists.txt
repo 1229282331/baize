@@ -12,6 +12,9 @@ add_library(baize_logic STATIC
     ../firmware/control/baize_encoders.c
     ../host/baize_session.c)
 target_include_directories(baize_logic PUBLIC ../protocol ../firmware/control ../host)
+if(NOT MSVC)
+    target_link_libraries(baize_logic PUBLIC m)
+endif()
 
 foreach(area IN ITEMS protocol drive encoders session)
     add_executable(test_${area} test_${area}.c)

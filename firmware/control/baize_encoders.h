@@ -5,7 +5,8 @@
 
 typedef struct {
     uint16_t counter[BAIZE_WHEELS];
-    volatile int64_t counts[BAIZE_WHEELS]; /* Observed over SWD during calibration. */
+    volatile int64_t counts[BAIZE_WHEELS]; /* Raw timer counts, observable over SWD. */
+    volatile int64_t angle_mrad[BAIZE_WHEELS]; /* Forward-positive wheel angles. */
     uint32_t sample_ms;
 } BaizeEncoders;
 
