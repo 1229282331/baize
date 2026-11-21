@@ -37,7 +37,8 @@ def run_case(imu_path, wheels):
         for i in range(13):
             if proc.poll() is not None:
                 break
-            os.write(master, status(i * 100) if wheels else imu(i * 100))
+            # Duplicate IMU samples must age out even while valid wheel samples arrive.
+            os.write(master, imu(0) + status(i * 100) if wheels else imu(i * 100))
             time.sleep(0.1)
         if wheels:
             resumed = imu(1299)
@@ -50,7 +51,8 @@ def run_case(imu_path, wheels):
         if wheels:
             assert proc.returncode == 0 and len(rows) == 14, (err, rows)
             assert [int(row["board_ms"]) for row in rows] == list(range(0, 1400, 100))
-            assert len(samples) == 1 and list(samples[0].values())[1:] == [
+            assert [row["board_ms"] for row in samples] == ["0", "1299"]
+            assert list(samples[-1].values())[1:] == [
                 "1299", "0.100", "-0.200", "9.807", "0.000", "-0.250", "0.500"]
             assert err.count("No valid IMU") == 1 and err.count("IMU telemetry resumed") == 1, err
         else:

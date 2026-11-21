@@ -8,7 +8,7 @@ typedef struct {
     uint32_t duration_ms;
     int32_t target_mrad_s[BAIZE_WHEELS];
     uint64_t phase_ms;
-    bool stop_ack, stop_sent, failed;
+    bool stop_sent, failed;
 } BaizeJog;
 
 /* args: duration in ms, then four wheel velocities in rad/s. */

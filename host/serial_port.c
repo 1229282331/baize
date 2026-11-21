@@ -120,3 +120,10 @@ uint64_t monotonic_ms(void)
     return (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
 }
 #endif
+
+bool serial_write_frame(SerialPort port, const BaizeFrame *frame)
+{
+    uint8_t wire[BAIZE_WIRE_MAX];
+    size_t size = baize_encode(frame, wire);
+    return size != 0 && serial_write(port, wire, size);
+}

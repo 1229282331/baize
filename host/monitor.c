@@ -30,13 +30,6 @@ static void print_imu(FILE *out, uint64_t host_ms, const BaizeImu *imu)
 static volatile sig_atomic_t interrupted;
 static void interrupt_jog(int sig) { (void)sig; interrupted = 1; }
 
-static bool send_frame(SerialPort port, const BaizeFrame *frame)
-{
-    uint8_t wire[BAIZE_WIRE_MAX];
-    size_t size = baize_encode(frame, wire);
-    return serial_write(port, wire, size);
-}
-
 static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv, BaizeJog *jog)
 {
     BaizeSession session;
@@ -62,7 +55,7 @@ static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv, Ba
             BaizeFrame command;
             bool send = jog ? baize_jog_next(jog, &session, now, &command)
                             : baize_session_next(&session, (uint32_t)now, &command);
-            if (send && !send_frame(port, &command)) {
+            if (send && !serial_write_frame(port, &command)) {
                 fputs("Serial write failed\n", stderr);
                 return 1;
             }
@@ -148,7 +141,7 @@ int main(int argc, char **argv)
         return 1;
     }
     int result = monitor(port, limit, imu_csv, jog);
-    if (jog && result) send_frame(port, &(BaizeFrame){.type = BAIZE_STOP});
+    if (jog && result) serial_write_frame(port, &(BaizeFrame){.type = BAIZE_STOP});
     if (imu_csv && fclose(imu_csv) != 0) result = 1;
     serial_close(port);
     return result;

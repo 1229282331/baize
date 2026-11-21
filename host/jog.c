@@ -37,10 +37,8 @@ void baize_jog_cancel(BaizeJog *jog, uint64_t now)
 
 void baize_jog_status(BaizeJog *jog, const BaizeStatus *status, uint64_t now)
 {
-    jog->stop_ack = status->drive_state == BAIZE_DISABLED && status->stop_reason == BAIZE_REQUESTED_STOP;
     if (status->drive_state == BAIZE_FAULT) stop(jog, now, true);
     if (jog->phase == JOG_RUNNING && status->drive_state != BAIZE_ENABLED) stop(jog, now, true);
-    if (jog->phase == JOG_STOPPING && jog->stop_sent && jog->stop_ack) jog->phase = JOG_DONE;
 }
 
 bool baize_jog_next(BaizeJog *jog, BaizeSession *session, uint64_t now, BaizeFrame *command)
@@ -49,11 +47,9 @@ bool baize_jog_next(BaizeJog *jog, BaizeSession *session, uint64_t now, BaizeFra
     if (jog->phase == JOG_SYNC) {
         if (now - jog->phase_ms >= 1000) {
             stop(jog, now, true);
-        } else if (jog->stop_ack && baize_session_enable(session, tick, command)) {
+        } else if (baize_session_enable(session, tick, command)) {
             jog->phase = JOG_ENABLING;
             return true;
-        } else if (session->phase == BAIZE_READY) {
-            baize_session_stop(session); /* Wait for an explicit STOP acknowledgement. */
         }
     }
     if (jog->phase == JOG_ENABLING) {
@@ -74,6 +70,10 @@ bool baize_jog_next(BaizeJog *jog, BaizeSession *session, uint64_t now, BaizeFra
         }
     }
     if (jog->phase == JOG_STOPPING) {
+        if (jog->stop_sent && session->phase == BAIZE_READY) {
+            jog->phase = JOG_DONE;
+            return false;
+        }
         if (now - jog->phase_ms >= 1000) {
             jog->phase = JOG_DONE;
             jog->failed = true;

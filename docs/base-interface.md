@@ -19,6 +19,26 @@
 
 六轴数据对应 ROS 2 的 `imu/data_raw`（`sensor_msgs/msg/Imu`），`frame_id` 为 `imu_link`。主机将加速度和角速度都除以 1000，分别填入 `linear_acceleration`（m/s²）和 `angular_velocity`（rad/s）。姿态由上位机融合，原始消息填 `orientation_covariance[0] = -1`。另两项协方差未知时填全零。用静态变换描述 `imu_link` 在 `base_link` 中的位置和朝向，车身坐标取 x 向前、y 向左、z 向上。时间戳用板端采样时间映射到主机时钟，重连或板端复位后重建映射，日志另存主机接收时间。[ROS IMU 坐标与话题约定](https://reps.openrobotics.org/rep-0145/) · [Jazzy Imu 消息定义](https://github.com/ros2/common_interfaces/blob/jazzy/sensor_msgs/msg/Imu.msg)
 
+## 上位机 C 库
+
+C 和 C++ 应用通过 CMake 目标 `baize_host` 使用串口、v1 编解码和启停会话。假设应用已有 `controller` 目标，并将本仓库放在 `third_party/baize`，可在应用的 CMakeLists.txt 中加入下列两行。Windows 和 Linux 的接入方式相同。
+
+```cmake
+add_subdirectory(third_party/baize/host baize-host EXCLUDE_FROM_ALL)
+target_link_libraries(controller PRIVATE baize_host)
+```
+
+在一个 I/O 循环中持有串口和会话。所有 `now_ms` 使用同一主机单调时钟，传入 `(uint32_t)monotonic_ms()` 即可。C 结构体保留线路单位，上层以 rad 或 rad/s 工作时在应用边界换算。
+
+| 操作 | 调用与判断 |
+| --- | --- |
+| 打开或重连 | `serial_open` 配置并清空串口，失败返回 `SERIAL_INVALID`。每次成功打开后调用 `baize_session_open(&session, 250)`，立即调用 `baize_session_next` 取出停机帧，用 `serial_write_frame` 发出。250 ms 是本工具的轮反馈过期时限。 |
+| 接收反馈 | 将 `serial_read` 得到的每个字节依次交给 `baize_session_receive`。返回 true 时按类型读取 `frame.status` 或 `frame.imu`。两路时间独立，相同的板端毫秒可各有一帧。 |
+| 使能和给速 | 应用明确请求使能时调用 `baize_session_enable`，返回 true 就立即发送它写出的使能帧。收到已使能反馈后，用 `baize_session_target` 提交四个 mrad/s 值（+1 rad/s 写 1000）。约每 20 ms 调用 `baize_session_next`，即使没有新目标也检查一次，返回 true 就发送该帧。一次提交最多发送一次，持续运动由控制程序持续提交新目标。 |
+| 停机和退出 | `baize_session_stop` 丢弃待发目标，随即用 `baize_session_next` 取出并发送停机帧。继续处理收发，直至会话进入 `BAIZE_READY` 或等待超时。串口读写失败时向调用者报告并关闭串口，重开后重新握手。 |
+
+轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并重新请求停机。上层据此重建角度和时钟基准。相同轮时间、状态和原因的重复帧不会刷新反馈计时。IMU 用独立的采样时间去重。[会话接口](../host/baize_session.h) · [串口接口](../host/serial_port.h) · [联调工具调用示例](../host/monitor.c)
+
 ## 启停与异常行为
 
 | 事件 | 底盘行为 |
@@ -29,7 +49,7 @@
 | 收到停机命令或运动命令超时 | 清零目标和控制器积累的输出，至迟在下一个轮速控制周期切入停止输出，撤销使能。实际停稳时间与距离分别在空载和带臂试验中测量。 |
 | 检出板端驱动故障 | 停止输出并报告故障。故障消除后进入未使能状态，恢复运动需重新使能并给出新目标。 |
 
-主机每次打开或重开端口都丢弃旧目标，发送停机。收到本次连接的未使能反馈后，再按调用者意图使能。收到故障反馈则报告原因并保持停机。运行中若反馈过期，主机停止刷新目标，并在链路可用时发送停机。串口字节流中断由板端命令超时检出，只有已使能时收到的有效轮速目标能延长运动指令的有效期。
+主机每次打开或重开端口都丢弃旧目标，发送停机。收到本次连接中驱动未使能、停机原因为主动停机的反馈后，再按调用者意图请求使能。上电、复位和板端超时反馈均不能代替主动停机回执。收到故障反馈则报告原因并保持停机。运行中若轮反馈过期，主机停止刷新目标，并在链路可用时发送停机。串口字节流中断由板端命令超时检出，只有已使能时收到的有效轮速目标能延长运动指令的有效期。
 
 当前台架版接受每轮 ±2 rad/s 的目标，主机点动约每 20 ms 刷新一次。25% PWM 限幅下，架空四轮同时给 ±1 rad/s 时已测得跟踪，给 ±2 rad/s 时四路输出饱和。板端每 5 ms 调速，指令有效期为 150 ms，轮状态周期为 20 ms。实车六轴样本约 49.92 Hz。[架空实测与条件](bringup-and-acceptance.md#架空四轮实测)
 

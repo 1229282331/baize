@@ -25,19 +25,46 @@ static void check_timeout(BaizeSession *session, uint32_t now_ms)
 bool baize_session_receive(BaizeSession *session, uint8_t byte, uint32_t now_ms, BaizeFrame *feedback)
 {
     if (!baize_receive(&session->rx, BAIZE_TO_HOST, byte, feedback)) return false;
-    if (feedback->type != BAIZE_STATUS) return true;
+    if (feedback->type == BAIZE_IMU) {
+        uint32_t sample_ms = feedback->imu.sample_ms;
+        if (session->have_imu_sample && session->imu_sample_ms == sample_ms) return false;
+        session->have_imu_sample = true;
+        session->imu_sample_ms = sample_ms;
+        return true;
+    }
 
     /* A late status cannot revive a target queued before the gap. */
     check_timeout(session, now_ms);
+    const BaizeStatus *status = &feedback->status;
+    if (session->have_wheel_sample) {
+        uint32_t advance = status->sample_ms - session->wheel_sample_ms;
+        if (advance == 0 && status->drive_state == session->last_drive_state &&
+            status->stop_reason == session->last_stop_reason) return false;
+        /* A backward tick or a state change at the same tick starts a new baseline. */
+        if (advance == 0 || advance > INT32_MAX) {
+            baize_session_stop(session);
+            session->have_imu_sample = false;
+        }
+    }
+    session->have_wheel_sample = true;
+    session->wheel_sample_ms = status->sample_ms;
+    session->last_drive_state = status->drive_state;
+    session->last_stop_reason = status->stop_reason;
     session->last_status_ms = now_ms;
-    switch (feedback->status.drive_state) {
+    switch (status->drive_state) {
     case BAIZE_DISABLED:
-        if (session->phase == BAIZE_WAIT_DISABLED) session->phase = BAIZE_READY;
-        if (session->phase == BAIZE_ACTIVE) baize_session_stop(session);
+        if (session->phase == BAIZE_WAIT_DISABLED) {
+            if (status->stop_reason == BAIZE_REQUESTED_STOP) session->phase = BAIZE_READY;
+        } else if (session->phase == BAIZE_ACTIVE || status->stop_reason != BAIZE_REQUESTED_STOP) {
+            baize_session_stop(session);
+        }
         break;
     case BAIZE_ENABLED:
-        if (session->phase == BAIZE_WAIT_ENABLED) session->phase = BAIZE_ACTIVE;
-        if (session->phase == BAIZE_READY) baize_session_stop(session);
+        if (session->phase == BAIZE_READY || status->stop_reason != BAIZE_RUNNING) {
+            baize_session_stop(session);
+        } else if (session->phase == BAIZE_WAIT_ENABLED) {
+            session->phase = BAIZE_ACTIVE;
+        }
         break;
     default: /* Fault or unrecognized state. */
         baize_session_stop(session);
