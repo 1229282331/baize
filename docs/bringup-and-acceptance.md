@@ -19,6 +19,20 @@ cube cmake --build --preset Debug
 
 上板时在设备管理器核对烧录器型号。若能作为 ST-LINK 使用，装配套驱动，用 STM32CubeProgrammer 的 `STM32_Programmer_CLI -l` 枚举，用 ST-LINK GDB server 与 Arm GDB 做源码断点调试。另记录上层 USB 数据口的 CH340 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
 
+## 桌面验证
+
+从仓库根目录执行以下命令。本机使用原生 GCC 12.1、CMake 和 Ninja，测试直接调用固件与主机共用的 C 编解码。三项 CTest 分别验证协议、板端驱动状态和上位机会话。
+
+```powershell
+cmake -S tests -B build/desktop -G Ninja -DCMAKE_C_COMPILER=gcc
+cmake --build build/desktop
+ctest --test-dir build/desktop --output-on-failure
+```
+
+五个文档样例逐字节比对，覆盖分段收帧、连续帧、超长帧和错误帧后的恢复。模拟时钟验证启停、整组目标越界、超时边界、毫秒回绕和故障恢复。主机每次打开串口时应先清空串口输入缓冲并重建会话，立即发停机，收到本次未使能状态后方可请求使能。新目标在收到已使能反馈后提交，每次提交最多发送一次。只收到 IMU 数据时，四轮状态仍可过期并触发停机。[协议样例](base-interface.md) · [桌面测试](../tests/)
+
+测试数据中的速度上限和时限仅用于推进模拟时钟与检查边界。实车参数由台架标定确定，停机电平、机械停稳时间和距离分别实测。
+
 ## 首次 SWD 连接与上电
 
 | 顺序 | 操作与通过条件 |
