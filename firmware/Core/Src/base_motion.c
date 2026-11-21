@@ -6,8 +6,8 @@
 
 extern TIM_HandleTypeDef htim8;
 
-/* Initial bench limits. PWM units are timer counts out of 2000. */
-enum { SPEED_LIMIT_MRAD_S = 2000, PWM_LIMIT = 300, COMMAND_TIMEOUT_MS = 150 };
+/* Wheels-raised bench limits. PWM units are timer counts out of 2000. */
+enum { SPEED_LIMIT_MRAD_S = 2000, PWM_LIMIT = 500, COMMAND_TIMEOUT_MS = 150 };
 static const uint32_t channels[] = {TIM_CHANNEL_4, TIM_CHANNEL_3, TIM_CHANNEL_2, TIM_CHANNEL_1};
 static const uint16_t dir_pins[] = {FL_DIR_Pin, FR_DIR_Pin, RL_DIR_Pin, RR_DIR_Pin};
 static const bool forward_high[] = {true, false, true, false};
