@@ -72,3 +72,15 @@ Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新
 当前固件每 5 ms 更新一次**轮速 PI 加前馈**。目标轮速 `r` 非零时，先用 `Ks × sign(r) + Kv × r` 估计该方向和速度所需的 PWM，再用编码器误差 `e = r − 实测轮速` 修正。比例项为 `Kp × e`，积分按实际秒数累加 `Ki × e × Δt`。三项相加后限幅并取整。总输出饱和时暂停会加深饱和的积分更新。零目标或停机会清积分并将输出归中。微分增益为零。轮速单位为 mrad/s，输出单位为 PWM 计数。[板端控制函数](../firmware/control/baize_drive.c) · [四路参数](../firmware/Core/Src/base_motion.c) · [WPILib 电机前馈原理](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/controllers/feedforward.html)
 
 架空标定值为四轮共用 `Kp=0.28`、`Ki=4.0`、`Kv=0.18`。按左前、右前、左后、右后顺序，`Ks` 分别为 125、125、125、90 计数。右后通道维持相同低速所需的输出较小。板端接受每轮 ±2000 mrad/s，命令时限 150 ms，PWM 上限为 ±700/2000（35%）。原版 PI 的起始增益取自厂商常速档换算，`Kp=0.067265`、`Ki=3.2392`。两版均已用同一辆车测量，带载参数需在相应工况复核。[架空调参与复验](bringup-and-acceptance.md#四轮架空调参复验) · [厂商调速实现](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c)
+
+### 速度环为什么选 PI
+
+起转取决于轮端转矩能否克服当时的静摩擦和负载。轮子一旦转动，维持同一低速所需的输出可能更小。现有前馈先给出基础 PWM，P 立即响应轮速误差，I 在误差持续时补足输出。轮子卡住且目标恒定时，测速微分趋于零。D 的用途在于速度变化时提供阻尼。随车范例使用分档增量式 PID。ODrive 的速度环采用 PI 加前馈，maxon 的单环速度整定也从 P、I 和测速滤波入手。[厂商范例](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [ODrive 速度环](https://docs.odriverobotics.com/v/latest/manual/control.html#velocity-control-loop) · [maxon 速度环整定](https://support.maxongroup.com/hc/en-us/articles/4411824545682-EPOS4-IDX-Manual-control-parameter-tuning-hints)
+
+按本车 144000 计数/圈、5 ms 测速窗，相邻两窗的增量相差 1 计数，速度就相差约 0.00873 rad/s，直接差分会得到约 1.75 rad/s²。D 会同时响应真实加速度、量化跳变和机械速度波动。实车对照采用测速微分和一阶低通，避免目标阶跃本身产生微分冲击。[微分与高频噪声](https://www.mathworks.com/videos/understanding-pid-control-part-3-expanding-beyond-a-simple-derivative-1531120808026.html) · [本车低速与 D 项对照](bringup-and-acceptance.md#架空低速下限与微分对照)
+
+| 备选方法 | 适用条件与本车取舍 |
+| --- | --- |
+| 正反向摩擦辨识与电压前馈 | 如果落地后起转仍是瓶颈，可缓慢递增驱动电压测起转，再从转动状态降压测维持转动所需的输出。分别记录正反向、载荷和电池电压，用独立数据检查分方向或按电压补偿是否能降低平滑轮速下限。现有 `Ks` 是闭环标定的 PWM 参数。[WPILib 电机电压模型](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/introduction/introduction-to-feedforward.html) · [双向辨识试验](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/system-identification/creating-routine.html) |
+| 外环控速度、内环控电流 | 电流内环能在有电流测量的驱动上直接调节产生转矩的电流，适合频繁负载变化。当前 STM32 采集了母线电压，现有接线和固件尚无逐轮电流反馈。[ODrive 级联控制](https://docs.odriverobotics.com/v/latest/manual/control.html) |
+| 状态观测器与 LQR | 适合已有可信电机模型并需要估计速度的场景。WPILib 的单状态飞轮例子中，LQR 反馈项等价于比例增益，滤波来自模型与观测器。低速黏滑还需要单独辨识摩擦。现阶段优先实测载荷变化。[WPILib 状态空间实例](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/state-space/state-space-flywheel-walkthrough.html) |
