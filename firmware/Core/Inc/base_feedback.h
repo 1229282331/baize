@@ -4,7 +4,7 @@
 #include "baize_encoders.h"
 
 void base_feedback_start(void);
-void base_feedback_status(const BaizeEncoders *encoders);
+void base_feedback_status(const BaizeEncoders *encoders, uint8_t state, uint8_t reason);
 void base_feedback_poll(uint32_t now_ms);
 
 #endif

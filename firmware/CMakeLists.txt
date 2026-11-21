@@ -9,6 +9,7 @@ add_executable(baize_base)
 target_sources(baize_base PRIVATE
     ../protocol/baize_protocol.c
     Core/Src/base_feedback.c
+    Core/Src/base_motion.c
     Core/Src/mpu6050.c
     control/baize_drive.c
     control/baize_encoders.c)

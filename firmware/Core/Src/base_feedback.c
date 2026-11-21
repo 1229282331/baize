@@ -1,4 +1,5 @@
 #include "base_feedback.h"
+#include "base_motion.h"
 #include "main.h"
 #include "mpu6050.h"
 
@@ -10,7 +11,6 @@ static uint8_t rx_byte;
 static uint8_t tx_wire[BAIZE_WIRE_MAX];
 /* One latest sample per stream. A nonzero type means it is waiting for TX. */
 static BaizeFrame status_frame, imu_frame;
-static volatile uint8_t stop_reason = BAIZE_RESET;
 static bool adc_calibrated;
 
 void base_feedback_start(void)
@@ -26,9 +26,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
     uint8_t byte = rx_byte;
     HAL_UART_Receive_IT(uart, &rx_byte, 1);
     BaizeFrame command;
-    if (baize_receive(&receiver, BAIZE_TO_BASE, byte, &command) && command.type == BAIZE_STOP) {
-        /* This acquisition build keeps the drive disabled and acknowledges STOP. */
-        stop_reason = BAIZE_REQUESTED_STOP;
+    if (baize_receive(&receiver, BAIZE_TO_BASE, byte, &command)) {
+        base_motion_command(&command, HAL_GetTick());
     }
 }
 
@@ -60,13 +59,13 @@ static uint16_t sample_supply_mv(void)
     return mv;
 }
 
-void base_feedback_status(const BaizeEncoders *encoders)
+void base_feedback_status(const BaizeEncoders *encoders, uint8_t state, uint8_t reason)
 {
     status_frame.type = BAIZE_STATUS;
     BaizeStatus *status = &status_frame.status;
     status->sample_ms = encoders->sample_ms;
-    status->drive_state = BAIZE_DISABLED;
-    status->stop_reason = stop_reason;
+    status->drive_state = state;
+    status->stop_reason = reason;
     status->supply_mv = sample_supply_mv();
     for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
         status->angle_mrad[i] = encoders->angle_mrad[i];

@@ -1,5 +1,6 @@
 #include "baize_drive.h"
 
+#include <math.h>
 #include <string.h>
 
 static void stop(BaizeDrive *drive, uint8_t state, uint8_t reason)
@@ -7,12 +8,13 @@ static void stop(BaizeDrive *drive, uint8_t state, uint8_t reason)
     memset(drive->target_mrad_s, 0, sizeof drive->target_mrad_s);
     drive->state = state;
     drive->stop_reason = reason;
+    drive->reset_output = true;
 }
 
 void baize_drive_init(BaizeDrive *drive, int32_t limit_mrad_s, uint32_t timeout_ms)
 {
     *drive = (BaizeDrive){ .state = BAIZE_DISABLED, .stop_reason = BAIZE_RESET,
-                          .limit_mrad_s = limit_mrad_s, .timeout_ms = timeout_ms };
+                          .limit_mrad_s = limit_mrad_s, .timeout_ms = timeout_ms, .reset_output = true };
 }
 
 void baize_drive_tick(BaizeDrive *drive, uint32_t now_ms)
@@ -56,4 +58,29 @@ void baize_drive_fault(BaizeDrive *drive, bool active)
     } else if (drive->state == BAIZE_FAULT) {
         drive->state = BAIZE_DISABLED;
     }
+}
+
+static float clamp_pwm(float value, int16_t limit)
+{
+    if (value > limit) return limit;
+    if (value < -limit) return (float)-limit;
+    return value;
+}
+
+int16_t baize_wheel_effort(BaizeWheelPi *pi, int32_t target_mrad_s, int32_t measured_mrad_s,
+                          uint32_t elapsed_ms, int16_t pwm_limit)
+{
+    if (target_mrad_s == 0) {
+        pi->integral = 0;
+        return 0;
+    }
+    float error = (float)target_mrad_s - (float)measured_mrad_s;
+    float proportional = pi->kp * error;
+    float output = proportional + pi->integral;
+    /* Integrate only while the error will not drive a saturated output further out. */
+    if ((error > 0 && output < pwm_limit) || (error < 0 && output > -pwm_limit)) {
+        float increment = pi->ki * error * ((float)elapsed_ms / 1000.0f);
+        pi->integral = clamp_pwm(pi->integral + increment, pwm_limit);
+    }
+    return (int16_t)lroundf(clamp_pwm(proportional + pi->integral, pwm_limit));
 }

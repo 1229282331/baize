@@ -28,5 +28,7 @@ if(UNIX)
         add_subdirectory(../host host)
         add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
+        add_test(NAME timed_jog COMMAND ${Python3_EXECUTABLE} -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_jog.py $<TARGET_FILE:baize-monitor>)
     endif()
 endif()

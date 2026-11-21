@@ -19,8 +19,8 @@ def wire(kind, payload):
     return b"".join(bytes([len(run) + 1]) + run for run in raw.split(b"\0")) + b"\0"
 
 
-def status(ms):
-    return wire(0x81, struct.pack("<IBBH4q4i", ms, 0, 2, 12400, *([0] * 8)))
+def status(ms, state=0, reason=2):
+    return wire(0x81, struct.pack("<IBBH4q4i", ms, state, reason, 12400, *([0] * 8)))
 
 
 def imu(ms):
@@ -64,6 +64,7 @@ def run_case(imu_path, wheels):
         os.close(slave)
 
 
-with tempfile.TemporaryDirectory() as directory:
-    run_case(Path(directory) / "wheel-and-imu.csv", wheels=True)
-    run_case(Path(directory) / "imu-only.csv", wheels=False)
+if __name__ == "__main__":
+    with tempfile.TemporaryDirectory() as directory:
+        run_case(Path(directory) / "wheel-and-imu.csv", wheels=True)
+        run_case(Path(directory) / "imu-only.csv", wheels=False)

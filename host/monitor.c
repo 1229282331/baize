@@ -1,8 +1,10 @@
 #include "baize_session.h"
+#include "jog.h"
 #include "serial_port.h"
 
 #include <errno.h>
 #include <inttypes.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,7 +27,17 @@ static void print_imu(FILE *out, uint64_t host_ms, const BaizeImu *imu)
     fputc('\n', out);
 }
 
-static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv)
+static volatile sig_atomic_t interrupted;
+static void interrupt_jog(int sig) { (void)sig; interrupted = 1; }
+
+static bool send_frame(SerialPort port, const BaizeFrame *frame)
+{
+    uint8_t wire[BAIZE_WIRE_MAX];
+    size_t size = baize_encode(frame, wire);
+    return serial_write(port, wire, size);
+}
+
+static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv, BaizeJog *jog)
 {
     BaizeSession session;
     baize_session_open(&session, 250);
@@ -35,23 +47,26 @@ static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv)
     bool imu_stale = false;
     uint64_t next_send = start;
     unsigned long rows = 0;
+    if (jog) jog->phase_ms = start;
     puts("host_elapsed_ms,board_ms,drive_state,stop_reason,supply_v,"
          "fl_rad,fr_rad,rl_rad,rr_rad,fl_rad_s,fr_rad_s,rl_rad_s,rr_rad_s");
     if (imu_csv) fputs("host_elapsed_ms,board_ms,ax_m_s2,ay_m_s2,az_m_s2,gx_rad_s,gy_rad_s,gz_rad_s\n", imu_csv);
 
     for (;;) {
         uint64_t now = monotonic_ms();
+        if (jog && interrupted && jog->phase != JOG_STOPPING && jog->phase != JOG_DONE) {
+            baize_jog_cancel(jog, now);
+            next_send = now;
+        }
         if (now >= next_send) {
             BaizeFrame command;
-            if (baize_session_next(&session, (uint32_t)now, &command)) {
-                uint8_t wire[BAIZE_WIRE_MAX];
-                size_t size = baize_encode(&command, wire);
-                if (!serial_write(port, wire, size)) {
-                    fputs("Serial write failed\n", stderr);
-                    return 1;
-                }
+            bool send = jog ? baize_jog_next(jog, &session, now, &command)
+                            : baize_session_next(&session, (uint32_t)now, &command);
+            if (send && !send_frame(port, &command)) {
+                fputs("Serial write failed\n", stderr);
+                return 1;
             }
-            next_send = now + 50;
+            next_send = now + (jog ? 20u : 50u);
         }
 
         uint8_t bytes[256];
@@ -67,6 +82,7 @@ static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv)
             if (frame.type == BAIZE_STATUS) {
                 print_status(now - start, &frame.status);
                 if (fflush(stdout) == EOF || ferror(stdout)) return 1;
+                if (jog) baize_jog_status(jog, &frame.status, now);
                 last_status = now;
                 if (frame_limit && ++rows == frame_limit) return 0;
             } else if (frame.type == BAIZE_IMU && imu_csv) {
@@ -77,12 +93,16 @@ static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv)
                 last_imu = now;
             }
         }
+        if (jog && jog->phase == JOG_DONE) {
+            if (jog->failed) fputs("Jog interrupted or handshake failed\n", stderr);
+            return jog->failed ? 1 : 0;
+        }
         if (now - last_status >= 1000) {
             fputs("No valid chassis status for 1000 ms\n", stderr);
             return 1;
         }
         if (imu_csv && !imu_stale && now - last_imu >= 1000) {
-            fputs("No valid IMU sample for 1000 ms; recording wheel status\n", stderr);
+            fputs("No valid IMU sample for 1000 ms. Wheel logging continues.\n", stderr);
             imu_stale = true;
         }
     }
@@ -91,12 +111,24 @@ static int monitor(SerialPort port, unsigned long frame_limit, FILE *imu_csv)
 int main(int argc, char **argv)
 {
     unsigned long limit = 0;
+    BaizeJog trial;
+    BaizeJog *jog = NULL;
     const char *imu_path = NULL;
     if (argc >= 4 && strcmp(argv[argc - 2], "--imu-csv") == 0) {
         imu_path = argv[argc - 1];
         argc -= 2;
     }
-    if (argc == 3) {
+    if (argc == 8 && strcmp(argv[2], "--jog") == 0) {
+        if (!baize_jog_parse(&trial, &argv[3])) {
+            fputs("Jog requires 1..2000 ms and four finite speeds within +/-2.0 rad/s\n", stderr);
+            return 2;
+        }
+        jog = &trial;
+        signal(SIGINT, interrupt_jog);
+#ifdef SIGPIPE
+        signal(SIGPIPE, SIG_IGN);
+#endif
+    } else if (argc == 3) {
         errno = 0;
         limit = strtoul(argv[2], NULL, 10);
         if (errno || !limit || strspn(argv[2], "0123456789") != strlen(argv[2])) {
@@ -104,7 +136,7 @@ int main(int argc, char **argv)
             return 2;
         }
     } else if (argc != 2) {
-        fputs("Usage: baize-monitor PORT [FRAME_COUNT] [--imu-csv FILE]\n", stderr);
+        fputs("Usage: baize-monitor PORT [FRAME_COUNT | --jog MS FL FR RL RR] [--imu-csv FILE]\n", stderr);
         return 2;
     }
     SerialPort port = serial_open(argv[1]);
@@ -115,7 +147,8 @@ int main(int argc, char **argv)
         serial_close(port);
         return 1;
     }
-    int result = monitor(port, limit, imu_csv);
+    int result = monitor(port, limit, imu_csv, jog);
+    if (jog && result) send_frame(port, &(BaizeFrame){.type = BAIZE_STOP});
     if (imu_csv && fclose(imu_csv) != 0) result = 1;
     serial_close(port);
     return result;

@@ -93,10 +93,32 @@ static void faults_and_reset(void)
     check_zero(&drive, BAIZE_DISABLED, BAIZE_RESET);
 }
 
+static void pi_feedback_and_stop_latch(void)
+{
+    BaizeWheelPi pi = {.kp = 0.5f, .ki = 2.0f};
+    assert(baize_wheel_effort(&pi, 100, 50, 10, 100) == 26);
+    assert(baize_wheel_effort(&pi, 100, 50, 20, 100) == 28);
+    for (int i = 0; i < 200; ++i) assert(baize_wheel_effort(&pi, 1000, 0, 5, 100) == 100);
+    assert(pi.integral == 3.0f);
+    assert(baize_wheel_effort(&pi, -500, 0, 5, 100) == -100);
+    assert(baize_wheel_effort(&pi, 0, 500, 5, 100) == 0 && pi.integral == 0);
+
+    BaizeDrive drive;
+    baize_drive_init(&drive, 2000, 150);
+    drive.reset_output = false;
+    baize_drive_command(&drive, &enable, 20);
+    baize_drive_command(&drive, &target, 21);
+    baize_drive_command(&drive, &stop, 22);
+    baize_drive_command(&drive, &enable, 23);
+    baize_drive_command(&drive, &target, 24);
+    assert(drive.state == BAIZE_ENABLED && drive.reset_output);
+}
+
 int main(void)
 {
     enable_and_expire();
     crc_and_clock_wrap();
     faults_and_reset();
+    pi_feedback_and_stop_latch();
     return 0;
 }
