@@ -1,0 +1,8 @@
+# Keil 本机界面设置与汇编清单
+**/MDK-ARM/*.uvguix.*
+**/MDK-ARM/*.lst
+
+# 随车 Keil 工程的生成目录，保留参考固件与链接布局
+**/MDK-ARM/STM32F103/*
+!**/MDK-ARM/STM32F103/*.hex
+!**/MDK-ARM/STM32F103/*.sct
