@@ -79,6 +79,8 @@ Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新
 
 按本车 144000 计数/圈、5 ms 测速窗，相邻两窗的增量相差 1 计数，速度就相差约 0.00873 rad/s，直接差分会得到约 1.75 rad/s²。D 会同时响应真实加速度、量化跳变和机械速度波动。实车对照采用测速微分和一阶低通，避免目标阶跃本身产生微分冲击。[微分与高频噪声](https://www.mathworks.com/videos/understanding-pid-control-part-3-expanding-beyond-a-simple-derivative-1531120808026.html) · [本车低速与 D 项对照](bringup-and-acceptance.md#架空低速下限与微分对照)
 
+若任务需要持续爬行，一种已在本车验证的办法是将测速和 PI 调节周期缩短至 1 ms，并按该周期重新调增益和摩擦前馈。轮子减速时可更早加力，重新加速时也能更早收回 PWM。架空试验在 0.10 rad/s 实现连续跟踪，在 0.20 rad/s 实现平稳跟踪。按同样的 5 ms 间隔记录，试验组的 PWM 变化幅度更大，当前作为地面带载对照的备选。[参数、代价与实测曲线](bringup-and-acceptance.md#低速-pi-的-1-ms-实车对照)
+
 | 备选方法 | 适用条件与本车取舍 |
 | --- | --- |
 | 正反向摩擦辨识与电压前馈 | 如果落地后起转仍是瓶颈，可缓慢递增驱动电压测起转，再从转动状态降压测维持转动所需的输出。分别记录正反向、载荷和电池电压，用独立数据检查分方向或按电压补偿是否能降低平滑轮速下限。现有 `Ks` 是闭环标定的 PWM 参数。[WPILib 电机电压模型](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/introduction/introduction-to-feedforward.html) · [双向辨识试验](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/system-identification/creating-routine.html) |

@@ -53,7 +53,7 @@ target_link_libraries(controller PRIVATE baize_host)
 
 当前台架版接受每轮 −2 至 +2 rad/s 的目标，主机点动约每 20 ms 刷新一次。板端每 5 ms 调速，指令有效期为 150 ms，轮状态周期为 20 ms。架空四轮在 35% PWM 上限下已实测到 ±2 rad/s。实车六轴样本约 49.92 Hz。[架空调参与复验](bringup-and-acceptance.md#四轮架空调参复验)
 
-四轮架空、未装机械臂时，持续平稳转动的每轮建议下限为 **0.35 rad/s**。上位机可用它规划持续运动。对更小的非零目标，固件按给定值调速。零目标清该轮积分并将输出归中。若把转弯内侧的小目标单独抬高，会改变左右轮速比和转弯曲率。对接 Nav2 时，`deadband_velocity` 按车身各轴速度配置，具体数值需结合底盘运动学和地面实测确定。[低速实测](bringup-and-acceptance.md#架空低速下限与微分对照) · [Nav2 速度平滑器](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/configuring_velocity_smoother/#deadband_velocity)
+四轮架空、未装机械臂时，常规固件持续平稳转动的每轮建议下限为 **0.35 rad/s**。规划持续运动时宜避开 0.10 rad/s 这样的极低速。起停过渡和转弯内侧可以给更小的非零目标，固件按给定值调速。零目标清该轮积分并将输出归中。若把转弯内侧的小目标单独抬高，会改变左右轮速比和转弯曲率。对接 Nav2 时，`deadband_velocity` 按车身各轴速度配置，具体数值需结合底盘运动学和地面实测确定。[低速实测](bringup-and-acceptance.md#架空低速下限与微分对照) · [Nav2 速度平滑器](https://docs.nav2.org/rolling/configuration_and_development/configuration_guide/core_servers/configuring_velocity_smoother/#deadband_velocity)
 
 ## 串口线协议 v1
 
