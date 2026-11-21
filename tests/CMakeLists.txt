@@ -9,10 +9,11 @@ enable_testing()
 add_library(baize_logic STATIC
     ../protocol/baize_protocol.c
     ../firmware/control/baize_drive.c
+    ../firmware/control/baize_encoders.c
     ../host/baize_session.c)
 target_include_directories(baize_logic PUBLIC ../protocol ../firmware/control ../host)
 
-foreach(area IN ITEMS protocol drive session)
+foreach(area IN ITEMS protocol drive encoders session)
     add_executable(test_${area} test_${area}.c)
     target_link_libraries(test_${area} PRIVATE baize_logic)
     add_test(NAME ${area} COMMAND test_${area})

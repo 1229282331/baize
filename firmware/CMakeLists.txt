@@ -6,7 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_executable(baize_base)
-target_sources(baize_base PRIVATE ../protocol/baize_protocol.c control/baize_drive.c)
+target_sources(baize_base PRIVATE
+    ../protocol/baize_protocol.c
+    control/baize_drive.c
+    control/baize_encoders.c)
 target_include_directories(baize_base PRIVATE ../protocol control)
 add_subdirectory(cmake/stm32cubemx)
 target_link_libraries(baize_base stm32cubemx)

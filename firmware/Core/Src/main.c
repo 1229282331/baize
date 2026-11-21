@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "baize_encoders.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,7 +52,9 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+/* Front left, front right, rear left, rear right, in protocol order. */
+static TIM_HandleTypeDef *const encoder_timers[BAIZE_WHEELS] = { &htim4, &htim2, &htim5, &htim3 };
+static BaizeEncoders encoders;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,7 +73,13 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+static void read_encoder_counters(uint16_t counter[BAIZE_WHEELS])
+{
+  for (size_t i = 0; i < BAIZE_WHEELS; ++i)
+  {
+    counter[i] = (uint16_t)__HAL_TIM_GET_COUNTER(encoder_timers[i]);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -111,7 +119,15 @@ int main(void)
   MX_TIM5_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  for (size_t i = 0; i < BAIZE_WHEELS; ++i)
+  {
+    if (HAL_TIM_Encoder_Start(encoder_timers[i], TIM_CHANNEL_ALL) != HAL_OK)
+    {
+      Error_Handler();
+    }
+  }
+  read_encoder_counters(encoders.counter);
+  encoders.sample_ms = HAL_GetTick();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -121,6 +137,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    uint32_t now_ms = HAL_GetTick();
+    if (now_ms != encoders.sample_ms)
+    {
+      uint16_t counter[BAIZE_WHEELS];
+      read_encoder_counters(counter);
+      baize_encoders_sample(&encoders, counter, now_ms);
+    }
   }
   /* USER CODE END 3 */
 }
