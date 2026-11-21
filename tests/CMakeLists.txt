@@ -22,9 +22,11 @@ foreach(area IN ITEMS protocol drive encoders session)
     add_test(NAME ${area} COMMAND test_${area})
 endforeach()
 
-if(UNIX)
-    find_package(Python3 QUIET COMPONENTS Interpreter)
-    if(Python3_Interpreter_FOUND)
+find_package(Python3 QUIET COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME ground_geometry COMMAND ${Python3_EXECUTABLE} -B
+        ${CMAKE_CURRENT_SOURCE_DIR}/test_ground_geometry.py)
+    if(UNIX)
         add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
         add_test(NAME timed_jog COMMAND ${Python3_EXECUTABLE} -B

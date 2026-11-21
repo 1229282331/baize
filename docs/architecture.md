@@ -54,6 +54,7 @@ USART2 经 PA2/TX、PA3/RX 接 CH340N。双层 USB 座的上层将 D+、D− 和
 - 裸机按固定周期采样四轮并更新控制输出。四个轮子共用带前馈的 PI 调速函数，各自保留参数和积分状态。
 - 编码器连续累计正反向位移，并处理硬件计数器回绕。四个轮子的角度和速度使用同一个采样时刻。串口收发和遥测不阻塞轮速更新。
 - 板端用自身时钟判断运动指令是否过期。停机时清除旧目标和调速器积累的输出。通信工具和未来的 ROS 插件复用一份协议编解码实现。
+- TIM8 锁存四路中性输出后启动独立看门狗 IWDG。主循环每完成一次编码器采样和四轮输出更新才喂狗。分频 16、重装值 199，一个计数周期共 3200 个 LSI 时钟。按芯片 LSI 的 30～60 kHz 范围折算，计满约 53～107 ms，典型 80 ms。命令断流由独立的 150 ms 指令时限处理。复位后主机沿用 v1 的启动握手。[STM32F103xC 数据手册，表 26](https://www.st.com/resource/en/datasheet/cd00191185.pdf#page=63) · [ST IWDG 驱动](../firmware/Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_iwdg.c)
 
 松灵 Scout 将底盘通信与 ROS 封装分开，支持独立联调。Linorobot2 则在单片机里接收 ROS 车速指令并计算里程计。本项目选择独立 USB 接口，把 ROS 依赖和整车几何留在上位机。[Scout SDK](https://github.com/agilexrobotics/ugv_sdk) · [Scout ROS 2 驱动](https://github.com/agilexrobotics/scout_ros2) · [Linorobot2 固件](https://github.com/linorobot/linorobot2_hardware)
 
