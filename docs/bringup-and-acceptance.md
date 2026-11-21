@@ -1,6 +1,6 @@
 # 环境准备与实车验收
 
-截至 2026-11-21，底盘已装好，四轮接线和 GY-521 有装车照片。现有探针外形与 ST-LINK/V2 标准双接口款一致。首次 SWD 读回和实车试验待执行。第一次验证用空载底盘，机械臂安装后再做带臂复测。[板级接线与资源](architecture.md) · [串口 v1 与收发样例](base-interface.md)
+截至 2026-11-21，底盘已装好，四轮接线和 GY-521 有装车照片。ST-LINK/V2 已完成首次 SWD 只读连接和整片主 Flash 备份。首次烧录和空载验收待开展，机械臂安装后再做带臂复测。[板级接线与资源](architecture.md) · [串口 v1 与收发样例](base-interface.md)
 
 ## Windows 开发环境
 
@@ -13,11 +13,11 @@ cube cmake --preset Debug
 cube cmake --build --preset Debug
 ```
 
-输出为 `firmware/build/Debug/baize_base.elf`。将两条构建命令的预设改为 `Release` 可生成优化版本。目标为 Cortex-M3 / Thumb-2，Flash 从 `0x08000000` 开始共 256 KiB，SRAM 从 `0x20000000` 开始共 48 KiB，初始栈顶为 `0x2000C000`。[链接脚本](../firmware/STM32F103xx_FLASH.ld)
+输出为 `firmware/build/Debug/baize_base.elf`。将两条构建命令的预设改为 `Release` 可生成优化版本。目标为 Cortex-M3 / Thumb-2。工程按图纸标注的 RCT6 链接，Flash 从 `0x08000000` 开始分配 256 KiB，SRAM 从 `0x20000000` 开始分配 48 KiB，初始栈顶为 `0x2000C000`。[链接脚本](../firmware/STM32F103xx_FLASH.ld)
 
-修改外设时用经典 CubeMX 6.19.0 打开工程配置，使用 STM32CubeF1 1.8.7 重新生成。目前已配置 SWD、8 MHz 晶振倍频至 72 MHz、115200 的 USART2、四路编码器输入、PA4 电压采样和重映射的 I2C1。TIM8 与电机方向脚留待停机电平试验。首次上板在电机动力隔离条件下进行。[CubeMX 工程](../firmware/baize_base.ioc) · [STM32CubeF1 1.8.7](https://github.com/STMicroelectronics/STM32CubeF1/tree/v1.8.7)
+修改外设时用经典 CubeMX 6.19.0 打开工程配置，使用 STM32CubeF1 1.8.7 重新生成。目前已配置 SWD、8 MHz 晶振倍频至 72 MHz、115200 的 USART2、四路编码器输入、PA4 电压采样和重映射的 I2C1。TIM8 与电机方向脚留待停机电平试验。首次运行本项目的固件时隔离电机动力。[CubeMX 工程](../firmware/baize_base.ioc) · [STM32CubeF1 1.8.7](https://github.com/STMicroelectronics/STM32CubeF1/tree/v1.8.7)
 
-本机已安装 STM32CubeProgrammer CLI 2.23.0。新机器可在仓库根目录执行 `cube bundle install programmer` 安装。仅将探针 USB 接到电脑，执行 `cube programmer -l st-link-only` 枚举探针。Windows 需要驱动时使用 STSW-LINK009。后续源码断点调试使用 ST-LINK GDB server 和 Arm GDB。底盘上层 USB 数据口另由 CH340 提供 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
+本机已安装 STM32CubeProgrammer CLI 2.23.0。新机器可在仓库根目录执行 `cube bundle install programmer` 安装。仅将探针 USB 接到电脑，执行 `cube programmer -l st-link-only` 枚举探针。若 Windows 已出现“STM32 STLink”并报代码 28，安装 ST 官方调试驱动 `stlink_dbg_winusb.inf` 后重试。本机验证的驱动版本为 2.2.0.0。后续源码断点调试使用 ST-LINK GDB server 和 Arm GDB。底盘上层 USB 数据口另由 CH340 提供 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
 
 ## 桌面验证
 
@@ -51,9 +51,15 @@ CN3 第 19 脚为探针侧 VDD（3.3 V），本车接线将其留空。第 15 �
 | 顺序 | 操作与通过条件 |
 | --- | --- |
 | 单独识别探针 | 小车断电，SWD 线留空，仅接探针 USB。枚举成功后记录探针型号和固件版本。 |
-| 断电接线 | 拔下探针 USB，隔离电机动力，按上表接好 SWD 四线。对照原图核对电源极性、四个六针插座、GY-521 的 VCC/GND 和 U7 针序。接线核对后让控制板独立供电，再接探针 USB。 |
+| 断电接线 | 拔下探针 USB，按上表接好 SWD 四线。对照原图核对电源极性、四个六针插座及 GY-521 在 U7 的 VCC/GND。只读备份时可保留电机插头，将车架稳固架起，确保四轮悬空、线缆远离轮胎。接线核对后让控制板独立供电，再接探针 USB。 |
 | 首次只读 | 用 `cube programmer -c port=SWD mode=HOTPLUG -ob displ` 查看器件 ID、Flash 容量和读保护状态。可读时按实际容量用 `-u` 导出从 `0x08000000` 开始的原 Flash，复核文件长度和 SHA-256。若读保护限制备份，记录限制并结束只读检查，解除保护可能擦除原内容。 |
 | 下载与调试 | 进入固件阶段后写入可追溯的 ELF，读回校验通过。在电机动力隔离时验证源码断点命中和复位启动，退出调试后确认正常运行。记录固件版本和校验结果。 |
+
+### 2026-11-21 首次只读结果
+
+- 控制板断电时，Windows 通过 USB 识别到 ST-LINK/V2（`0483:3748`），探针固件为 `V2J45S7`。随后保留四个电机插头，用户确认车架稳固、四轮悬空，上电后四轮静止。
+- 以 480 kHz 热连接，目标电压读数为 3.22 V。CubeProgrammer 识别为 STM32F101/F103 高密度系列，设备 ID 为 `0x414`，修订版显示 Rev X，读保护关闭。容量寄存器 `0x1FFFF7E0` 读得 `0x0200`，与工具报告的 512 KiB 一致。图纸标注 STM32F103RCT6，实物完整料号待核对芯片丝印。
+- 从 `0x08000000` 独立读回两次，每份 524,288 字节，逐字节相同且全为 `0xFF`。主 Flash 呈擦除态。快照 `original-flash.bin`、第二份读回及校验清单位于本机 `%LOCALAPPDATA%\Baize\Backups\20261121-145708-95c910b1\`。两份 SHA-256 均为 `043e238a765f7cfbc62596a50e53c8ffb6b188a99357b0ebede251725d67589f`。
 
 ## 台架验收
 
