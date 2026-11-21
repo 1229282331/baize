@@ -60,10 +60,29 @@ static void vendor_wheel_angles(void)
     }
 }
 
+static void velocity_window_and_clock_wrap(void)
+{
+    BaizeEncoders encoders = {.sample_ms = UINT32_MAX - 2, .velocity_ms = UINT32_MAX - 2};
+    const uint16_t first[] = {65535, 1, 0, 1};
+    const uint16_t second[] = {65534, 2, 0, 2};
+    assert(!baize_encoders_sample(&encoders, first, UINT32_MAX));
+    assert(baize_encoders_sample(&encoders, second, 2));
+    /* Two counts in 5 ms remain visible below the 1 mrad angle resolution. */
+    assert(encoders.angle_mrad[0] == 0);
+    assert(encoders.velocity_mrad_s[0] == 17 && encoders.velocity_mrad_s[1] == -17);
+    assert(encoders.velocity_mrad_s[2] == 0 && encoders.velocity_mrad_s[3] == 17);
+    const uint16_t zero[] = {0, 0, 0, 0};
+    assert(baize_encoders_sample(&encoders, zero, 12));
+    assert(encoders.velocity_mrad_s[0] == -9 && encoders.velocity_mrad_s[1] == 9);
+    assert(baize_encoders_sample(&encoders, zero, 17));
+    for (size_t i = 0; i < BAIZE_WHEELS; ++i) assert(encoders.velocity_mrad_s[i] == 0);
+}
+
 int main(void)
 {
     reverse_across_wrap();
     accumulate_past_32_bits();
     vendor_wheel_angles();
+    velocity_window_and_clock_wrap();
     return 0;
 }

@@ -8,6 +8,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 add_executable(baize_base)
 target_sources(baize_base PRIVATE
     ../protocol/baize_protocol.c
+    Core/Src/base_feedback.c
     control/baize_drive.c
     control/baize_encoders.c)
 target_include_directories(baize_base PRIVATE ../protocol control)

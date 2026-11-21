@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "baize_encoders.h"
+#include "base_feedback.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -119,6 +120,7 @@ int main(void)
   MX_TIM5_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
+  base_feedback_start();
   for (size_t i = 0; i < BAIZE_WHEELS; ++i)
   {
     if (HAL_TIM_Encoder_Start(encoder_timers[i], TIM_CHANNEL_ALL) != HAL_OK)
@@ -128,6 +130,8 @@ int main(void)
   }
   read_encoder_counters(encoders.counter);
   encoders.sample_ms = HAL_GetTick();
+  encoders.velocity_ms = encoders.sample_ms;
+  uint32_t last_status_ms = encoders.sample_ms;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -142,7 +146,11 @@ int main(void)
     {
       uint16_t counter[BAIZE_WHEELS];
       read_encoder_counters(counter);
-      baize_encoders_sample(&encoders, counter, now_ms);
+      if (baize_encoders_sample(&encoders, counter, now_ms) && now_ms - last_status_ms >= 20u)
+      {
+        last_status_ms = now_ms;
+        base_feedback_send(&encoders);
+      }
     }
   }
   /* USER CODE END 3 */
@@ -207,6 +215,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE END ADC1_Init 0 */
 
   ADC_ChannelConfTypeDef sConfig = {0};
+  ADC_InjectionConfTypeDef sConfigInjected = {0};
 
   /* USER CODE BEGIN ADC1_Init 1 */
 
@@ -232,6 +241,21 @@ static void MX_ADC1_Init(void)
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Injected Channel
+  */
+  sConfigInjected.InjectedChannel = ADC_CHANNEL_VREFINT;
+  sConfigInjected.InjectedRank = ADC_INJECTED_RANK_1;
+  sConfigInjected.InjectedNbrOfConversion = 1;
+  sConfigInjected.InjectedSamplingTime = ADC_SAMPLETIME_239CYCLES_5;
+  sConfigInjected.ExternalTrigInjecConv = ADC_INJECTED_SOFTWARE_START;
+  sConfigInjected.AutoInjectedConv = ENABLE;
+  sConfigInjected.InjectedDiscontinuousConvMode = DISABLE;
+  sConfigInjected.InjectedOffset = 0;
+  if (HAL_ADCEx_InjectedConfigChannel(&hadc1, &sConfigInjected) != HAL_OK)
   {
     Error_Handler();
   }
