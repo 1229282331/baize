@@ -37,6 +37,8 @@ ctest --test-dir build/desktop --output-on-failure
 
 实物的黑色双排座对应 ST-LINK/V2 的 CN3（STM32 JTAG/SWD，2×10 针），金属小接口用于 STM8 SWIM。按实物的 1 脚标记、排线标记和手册图 10 核对方向。图 10 是从 PCB 上方看的视图，排线插头接触面与之镜像。[ST 用户手册 UM1075 Rev 10，图 4、表 4、图 10](https://www.st.com/resource/en/user_manual/dm00026748-st-link-v2-in-circuit-debugger-programmer-for-stm8-and-stm32-stmicroelectronics.pdf#page=8)
 
+![四根母对母杜邦线的接法。烧录器缺口朝上，控制板双层 USB 朝右，两端按相同字母连接。](assets/swd-four-wires.png)
+
 | ST-LINK/V2 CN3 | 小车控制板 | 用途 |
 | --- | --- | --- |
 | 1 · VAPP（2 脚同名） | JP24 的 3.3 V | 控制板独立供电，从板上取目标电压参考。 |
