@@ -32,9 +32,11 @@ JP5 的 3、4 脚依次接 CH2、CH1，其余三个插座依次接 CH1、CH2。�
 
 ### 电源采样与 USB
 
-板上外部晶振为 8 MHz，设计采用 PLL ×9，HCLK 和 PCLK2 为 72 MHz，PCLK1 为 36 MHz。ADC1 选 PCLK2 ÷6，得到 12 MHz。旧工程的 ÷4 在同一时钟树下会得到 18 MHz，超过该芯片 14 MHz 的 ADC 上限。电源经 R2（68 kΩ）和 R5（10 kΩ）分压到 PA4/ADC1_IN4，板端用 ADC 引脚电压乘 7.8 得到电源电压初值，实车用同一时刻的万用表读数校准。[时钟初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/main.c) · [运动控制板原理图](四轮灵风小车资料/原理图.pdf) · [STM32F103xC 数据手册](https://www.st.com/resource/en/datasheet/stm32f103rc.pdf)
+板上外部晶振为 8 MHz，设计采用 PLL ×9，HCLK 和 PCLK2 为 72 MHz，PCLK1 为 36 MHz。ADC1 选 PCLK2 ÷6，得到 12 MHz。旧工程的 ÷4 在同一时钟树下会得到 18 MHz，超过该芯片 14 MHz 的 ADC 上限。[厂商时钟初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/main.c) · [STM32F103xC 数据手册](https://www.st.com/resource/en/datasheet/stm32f103rc.pdf)
 
-USART2 经 PA2/TX、PA3/RX 接 CH340N。双层 USB 座的上层用于串口通信，下层是给外设的 5 V 电源输出。电脑接上层，先核对 COM 口枚举，再以 115200 bit/s 联调。SWD 使用单独的调试引脚。[随车说明，第 2、5 页](四轮灵风小车资料/四轮小车资料简介.pdf)
+电源经 R2（68 kΩ）和 R5（10 kΩ）分压到 PA4/ADC1_IN4。固件启动时校准 ADC，每次采 PA4 后自动采内部参考 VREFINT。输入电压估算为 `1200 mV × 7.8 × PA4 读数 / VREFINT 读数`，其中 1200 mV 为参考标称值。绝对精度待输入端万用表同步比对。[电压采样实现](../firmware/Core/Src/base_feedback.c) · [运动控制板原理图](四轮灵风小车资料/原理图.pdf)
+
+USART2 经 PA2/TX、PA3/RX 接 CH340N。双层 USB 座的上层将 D+、D− 和电脑提供的 `USB_5V` 接至 CH340N，下层给外设输出 5 V。用适配本板的 USB-A 公对公数据线将电脑 USB-A 口接到上层，枚举出串口后以 115200 bit/s 联调。SWD 使用单独的调试引脚。[随车说明，第 2、5 页](四轮灵风小车资料/四轮小车资料简介.pdf) · [运动控制板原理图](四轮灵风小车资料/原理图.pdf)
 
 ### 已安装的 MPU6050
 
