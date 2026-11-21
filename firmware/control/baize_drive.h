@@ -16,6 +16,8 @@ typedef struct {
 typedef struct {
     float kp, ki; /* PWM counts per velocity error and per integrated velocity error, respectively. */
     float integral;
+    float ks; /* Friction compensation in PWM counts, applied in the target direction. */
+    float kv; /* Velocity feedforward in PWM counts per mrad/s. */
 } BaizeWheelPi;
 
 /* Supply the calibrated nonnegative wheel speed limit and a positive command timeout. */

@@ -47,6 +47,8 @@ def wheel_response(rows, start, wheel):
         sum(abs(v - magnitude) for v in speed[-TAIL_SAMPLES:]) / (TAIL_SAMPLES * 1000),
         100 * sum(tail_effort) / (TAIL_SAMPLES * PWM_FULL_SCALE),
         100 * at_limit / TAIL_SAMPLES,
+        sum(abs(v - magnitude) for v in speed) / (len(speed) * 1000),
+        sign * sum(speed[-TAIL_SAMPLES:]) / (TAIL_SAMPLES * 1000),
     )
 
 
@@ -66,7 +68,8 @@ def summarize(path, output):
 
     writer = csv.writer(output, lineterminator="\n")
     writer.writerow(("trial", "wheel", "target_rad_s", "t10_ms", "t90_ms", "peak_rad_s",
-                     "overshoot_pct", "tail_mae_rad_s", "tail_pwm_pct", "tail_at_limit_pct"))
+                     "overshoot_pct", "tail_mae_rad_s", "tail_pwm_pct", "tail_at_limit_pct",
+                     "step_mae_rad_s", "tail_mean_rad_s"))
     for (trial, wheel), start in starts.items():
         writer.writerow((trial, wheel, *wheel_response(trials[trial], start, wheel)))
 

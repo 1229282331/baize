@@ -114,11 +114,28 @@ static void pi_feedback_and_stop_latch(void)
     assert(drive.state == BAIZE_ENABLED && drive.reset_output);
 }
 
+static void wheel_feedforward(void)
+{
+    BaizeWheelPi pi = {.kp = 0.25f, .ki = 2.0f, .ks = 20.0f, .kv = 0.5f};
+    /* At target speed the two feedforward terms supply the running effort. */
+    assert(baize_wheel_effort(&pi, 100, 100, 10, 100) == 70);
+    assert(baize_wheel_effort(&pi, -100, -100, 10, 100) == -70);
+    assert(baize_wheel_effort(&pi, 100, 0, 10, 100) == 97);
+    /* Include feedforward in the saturation check and allow I to unwind. */
+    assert(baize_wheel_effort(&pi, 200, 190, 10, 100) == 100);
+    assert(pi.integral == 2.0f);
+    assert(baize_wheel_effort(&pi, 200, 210, 100, 100) == 100);
+    assert(pi.integral == 0.0f);
+    assert(baize_wheel_effort(&pi, -100, 0, 10, 100) == -97);
+    assert(baize_wheel_effort(&pi, 0, -100, 10, 100) == 0 && pi.integral == 0.0f);
+}
+
 int main(void)
 {
     enable_and_expire();
     crc_and_clock_wrap();
     faults_and_reset();
     pi_feedback_and_stop_latch();
+    wheel_feedforward();
     return 0;
 }

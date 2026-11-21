@@ -7,10 +7,12 @@
 extern TIM_HandleTypeDef htim8;
 
 /* Wheels-raised bench limits. PWM units are timer counts out of 2000. */
-enum { SPEED_LIMIT_MRAD_S = 2000, PWM_LIMIT = 500, COMMAND_TIMEOUT_MS = 150 };
+enum { SPEED_LIMIT_MRAD_S = 2000, PWM_LIMIT = 700, COMMAND_TIMEOUT_MS = 150 };
 static const uint32_t channels[] = {TIM_CHANNEL_4, TIM_CHANNEL_3, TIM_CHANNEL_2, TIM_CHANNEL_1};
 static const uint16_t dir_pins[] = {FL_DIR_Pin, FR_DIR_Pin, RL_DIR_Pin, RR_DIR_Pin};
 static const bool forward_high[] = {true, false, true, false};
+/* Wheels-raised calibration, in protocol order: FL, FR, RL, RR. */
+static const float friction_pwm[BAIZE_WHEELS] = {125.0f, 125.0f, 125.0f, 90.0f};
 static BaizeDrive drive;
 static BaizeWheelPi wheels[BAIZE_WHEELS];
 static int16_t last_effort[BAIZE_WHEELS];
@@ -19,8 +21,7 @@ void base_motion_start(void)
 {
     baize_drive_init(&drive, SPEED_LIMIT_MRAD_S, COMMAND_TIMEOUT_MS);
     for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
-        /* Vendor nominal P/I converted from counts/5 ms to protocol velocity units. */
-        wheels[i] = (BaizeWheelPi){.kp = 0.067265f, .ki = 3.2392f};
+        wheels[i] = (BaizeWheelPi){.kp = 0.28f, .ki = 4.0f, .ks = friction_pwm[i], .kv = 0.18f};
         __HAL_TIM_SET_COMPARE(&htim8, channels[i], htim8.Init.Period + 1u);
     }
     /* Latch neutral and start all four channels before assigning the pins to TIM8. */

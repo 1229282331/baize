@@ -75,12 +75,13 @@ int16_t baize_wheel_effort(BaizeWheelPi *pi, int32_t target_mrad_s, int32_t meas
         return 0;
     }
     float error = (float)target_mrad_s - (float)measured_mrad_s;
-    float proportional = pi->kp * error;
-    float output = proportional + pi->integral;
+    float feedforward = pi->kv * (float)target_mrad_s + (target_mrad_s > 0 ? pi->ks : -pi->ks);
+    float base = feedforward + pi->kp * error;
+    float output = base + pi->integral;
     /* Integrate only while the error will not drive a saturated output further out. */
     if ((error > 0 && output < pwm_limit) || (error < 0 && output > -pwm_limit)) {
         float increment = pi->ki * error * ((float)elapsed_ms / 1000.0f);
         pi->integral = clamp_pwm(pi->integral + increment, pwm_limit);
     }
-    return (int16_t)lroundf(clamp_pwm(proportional + pi->integral, pwm_limit));
+    return (int16_t)lroundf(clamp_pwm(base + pi->integral, pwm_limit));
 }
