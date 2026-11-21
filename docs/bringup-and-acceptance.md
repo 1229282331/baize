@@ -1,6 +1,6 @@
 # 环境准备与实车验收
 
-截至 2026-11-21，底盘已装好，四轮接线和 GY-521 有装车照片，已有 SK-Link V2，机械臂尚未装车。下面的实车项目均待执行。第一次验证用空载底盘，机械臂安装后再做带臂复测。[板级接线与资源](architecture.md) · [串口 v1 与收发样例](base-interface.md)
+截至 2026-11-21，底盘已装好，四轮接线和 GY-521 有装车照片。现有探针外形与 ST-LINK/V2 标准双接口款一致。首次 SWD 读回和实车试验待执行。第一次验证用空载底盘，机械臂安装后再做带臂复测。[板级接线与资源](architecture.md) · [串口 v1 与收发样例](base-interface.md)
 
 ## Windows 开发环境
 
@@ -17,7 +17,7 @@ cube cmake --build --preset Debug
 
 修改外设时用经典 CubeMX 6.19.0 打开工程配置，使用 STM32CubeF1 1.8.7 重新生成。目前已配置 SWD、8 MHz 晶振倍频至 72 MHz、115200 的 USART2、四路编码器输入、PA4 电压采样和重映射的 I2C1。TIM8 与电机方向脚留待停机电平试验。首次上板在电机动力隔离条件下进行。[CubeMX 工程](../firmware/baize_base.ioc) · [STM32CubeF1 1.8.7](https://github.com/STMicroelectronics/STM32CubeF1/tree/v1.8.7)
 
-上板时在设备管理器核对烧录器型号。若能作为 ST-LINK 使用，装配套驱动，用 STM32CubeProgrammer 的 `STM32_Programmer_CLI -l` 枚举，用 ST-LINK GDB server 与 Arm GDB 做源码断点调试。另记录上层 USB 数据口的 CH340 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
+本机已安装 STM32CubeProgrammer CLI 2.23.0。新机器可在仓库根目录执行 `cube bundle install programmer` 安装。仅将探针 USB 接到电脑，执行 `cube programmer -l st-link-only` 枚举探针。Windows 需要驱动时使用 STSW-LINK009。后续源码断点调试使用 ST-LINK GDB server 和 Arm GDB。底盘上层 USB 数据口另由 CH340 提供 COM 口。[STM32CubeProgrammer](https://www.st.com/en/development-tools/stm32cubeprog.html) · [ST-LINK Windows 驱动](https://www.st.com/en/development-tools/stsw-link009.html)
 
 ## 桌面验证
 
@@ -35,11 +35,22 @@ ctest --test-dir build/desktop --output-on-failure
 
 ## 首次 SWD 连接与上电
 
+实物的黑色双排座对应 ST-LINK/V2 的 CN3（STM32 JTAG/SWD，2×10 针），金属小接口用于 STM8 SWIM。按实物的 1 脚标记、排线标记和手册图 10 核对方向。图 10 是从 PCB 上方看的视图，排线插头接触面与之镜像。[ST 用户手册 UM1075 Rev 10，图 4、表 4、图 10](https://www.st.com/resource/en/user_manual/dm00026748-st-link-v2-in-circuit-debugger-programmer-for-stm8-and-stm32-stmicroelectronics.pdf#page=8)
+
+| ST-LINK/V2 CN3 | 小车控制板 | 用途 |
+| --- | --- | --- |
+| 1 · VAPP（2 脚同名） | JP24 的 3.3 V | 控制板独立供电，从板上取目标电压参考。 |
+| 7 · SWDIO | JP26 第 2 脚 · PA13 / SWDIO | 双向数据。 |
+| 9 · SWCLK | JP26 第 3 脚 · PA14 / SWCLK | 调试时钟。 |
+| 20 · GND | JP22 的 GND | 两端共地。 |
+
+CN3 第 19 脚为探针侧 VDD（3.3 V），本车接线将其留空。第 15 脚为 NRST，首次四线连接时留空。小车说明第 5 页有 SWCLK、SWDIO 在板上的箭头，3.3 V 和 GND 分别见原理图 JP24、JP22。[ST 针脚表，第 12 页](https://www.st.com/resource/en/user_manual/dm00026748-st-link-v2-in-circuit-debugger-programmer-for-stm8-and-stm32-stmicroelectronics.pdf#page=12) · [车板位置图，第 5 页](四轮灵风小车资料/四轮小车资料简介.pdf#page=5) · [运动控制板原理图](四轮灵风小车资料/原理图.pdf)
+
 | 顺序 | 操作与通过条件 |
 | --- | --- |
-| 断电核对 | 对照原图核对电源极性、四个六针插座、GY-521 的 VCC/GND 和 U7 针序。首次测输出时隔离电机动力，恢复插接前断电。 |
-| 识别探针 | 按实物丝印或说明书确认 SK-Link V2 的针序，将 GND、SWDIO、SWCLK 接到目标板对应引脚。若探针有 VTref 输入，由目标板 3.3 V 提供电平参考。若标注的是 3.3 V 电源输出，目标板独立供电时将该输出留空。记录型号、接线和识别结果。 |
-| 首次写入前 | 经 SWD 读取器件 ID、Flash 容量和读保护状态。可读时先导出原 Flash 并记录校验值。若读保护限制备份，记录限制并结束只读检查，解除保护可能擦除原内容。 |
+| 单独识别探针 | 小车断电，SWD 线留空，仅接探针 USB。枚举成功后记录探针型号和固件版本。 |
+| 断电接线 | 拔下探针 USB，隔离电机动力，按上表接好 SWD 四线。对照原图核对电源极性、四个六针插座、GY-521 的 VCC/GND 和 U7 针序。接线核对后让控制板独立供电，再接探针 USB。 |
+| 首次只读 | 用 `cube programmer -c port=SWD mode=HOTPLUG -ob displ` 查看器件 ID、Flash 容量和读保护状态。可读时按实际容量用 `-u` 导出从 `0x08000000` 开始的原 Flash，复核文件长度和 SHA-256。若读保护限制备份，记录限制并结束只读检查，解除保护可能擦除原内容。 |
 | 下载与调试 | 进入固件阶段后写入可追溯的 ELF，读回校验通过。在电机动力隔离时验证源码断点命中和复位启动，退出调试后确认正常运行。记录固件版本和校验结果。 |
 
 ## 台架验收
