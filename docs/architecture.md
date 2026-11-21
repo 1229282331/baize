@@ -28,7 +28,7 @@
 
 JP5 的 3、4 脚依次接 CH2、CH1，其余三个插座依次接 CH1、CH2。固件按表分配通道。TIM2 选择部分重映射 1，调试端口选择 Serial Wire，释放 PA15、PB3 并保留 PA13/SWDIO、PA14/SWCLK。PC13～PC15 作为低速方向输出，PC14、PC15 已用于电机，LSE 保持关闭。[STM32F103xC 数据手册](https://www.st.com/resource/en/datasheet/stm32f103rc.pdf) · [STM32F1 参考手册](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101-stm32f102-stm32f103-stm32f105-and-stm32f107-advanced-armbased-32bit-mcus-stmicroelectronics.pdf)
 
-旧工程的 TIM8 采用高有效 PWM1，`PSC=2`、`ARR=1999`，初始化和四轮零目标都写 `CCR=2000`。按 72 MHz 定时器时钟计算，PWM 频率为 12 kHz，写入该值后已使能的输出脚为持续高电平。新固件接入驱动后，在四轮架空、电机接线保留的状态下核对复位、未使能和停机时的 PWM 与方向组合。观察未使能时车轮能否保持静止，以及运动中停机时的滑行或制动表现。[厂商 TIM8 初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim8.c) · [PWM 通道和上限](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/MotorControl.h) · [厂商零目标处理](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c)
+TIM8 沿用厂商高有效 PWM1，`PSC=2`、`ARR=1999`，频率 12 kHz。四路在引脚切入定时器复用前先锁存 `CCR=2000`，板上已读到四脚持续为高、编码器静止。非零输出将 CCR 降低相应计数，正向 DIR 按左前、右前、左后、右后依次为高、低、高、低。换向前先保持一个控制周期的停止输出，停机时同时清零积分。实物转向、制动或滑行表现待带动轮胎时核对。[固件电机输出](../firmware/Core/Src/base_motion.c) · [厂商 TIM8 初始化](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim8.c) · [厂商方向逻辑](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/MotorControl.c)
 
 ### 电源采样与 USB
 
@@ -44,7 +44,7 @@ USART2 经 PA2/TX、PA3/RX 接 CH340N。双层 USB 座的上层将 D+、D− 和
 
 上电后在 7 位地址 `0x68`、`0x69` 中确认 AD0 选中的地址，读寄存器 `0x75`（WHO_AM_I），两种地址的预期返回值都是 `0x68`。旧 HAL 代码中的 `0xD0` 是 `0x68` 左移一位后的参数。[厂商驱动地址定义](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/mpu6050.h)
 
-用数据就绪事件记录板端时间，一次连续读取 `0x3B～0x48` 的 14 字节。每个有符号 16 位数高字节在前，跳过中间的两字节温度。按实际量程换算六轴读数，再将加速度从 g 乘 9.80665 转为 m/s²，角速度从 °/s 乘 π/180 转为 rad/s。联调时记录量程、实际采样率和安装朝向。[MPU6050 寄存器手册](https://cdn.sparkfun.com/datasheets/Sensors/Accelerometers/RM-MPU-6000A.pdf)
+实车在 `0x68` 通过 WHO_AM_I 检查。量程为 ±2 g 和 ±250 °/s，启用 DLPF（档位 4），将 1 kHz 基频除以 20。PA5 上升沿记录板端时间，I²C 中断一次读出 `0x3A～0x48` 的就绪标志和 14 字节数据。跳过温度，按 16384 LSB/g 和 131 LSB/(°/s) 换算，保留重力与零偏。该固件将单次传输时限设为 5 ms，连续 100 ms 无就绪事件时重新探测，探测间隔 250 ms。[固件采样实现](../firmware/Core/Src/mpu6050.c) · [TDK InvenSense 寄存器手册](https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Register-Map.pdf)
 
 六轴数据保留传感器自身的右手坐标轴。板端只发送有效新样本。I²C 读取有时限，读取失败跳过该样本，串口发送拥塞时优先保留轮状态反馈。上位机记录传感器相对车身的安装变换，姿态解算可以与轮式里程计在主机上融合。[底盘接口约定](base-interface.md) · [ROS IMU 坐标约定](https://reps.openrobotics.org/rep-0145/)
 
@@ -69,4 +69,4 @@ Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新
 
 编码器沿用厂商默认值，输出轴每圈 144000 计数，M1～M4 的原始计数依次乘以 −1、−1、−1、+1 换算为前进为正的轮角。原始累计计数保留，轮角按累计值换算到最近的 mrad。四个定时器均采用双路编码器模式，两个输入的数字滤波值均为 15。轮序和方向在首次架空单轮点动时核对，发现比例偏差再用独立观察的转数复核每圈计数。[固件换算参数](../firmware/control/baize_encoders.c) · [厂商计数参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [厂商反馈符号](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [厂商编码器输入配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim4.c)
 
-厂商调速周期为 5 ms，参考程序的转速限幅为 170 rpm。PI 增益取决于反馈单位、控制周期和输出定义，接入闭环后依据响应调整。命令超时、实际速度上限和停稳距离随验收版本记录。机械臂尚未装车，先形成空载记录，安装后按实际姿态和载荷复测。[厂商调速配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [环境准备与实车验收](bringup-and-acceptance.md)
+台架固件每 5 ms 用新测速样本运行四轮 PI，按实际经过时间积分，输出同向饱和时停止继续积分。厂商常速档的比例、积分系数绝对值为 0.587、0.141337，以 144000 计数/圈、5 ms 和 mrad/s 换算，取 `Kp=0.067265`、`Ki=3.2392`，输出单位为 PWM 计数。厂商转速上限为 170 rpm。本次架空联调先用每轮 ±2000 mrad/s、±300/2000 PWM 计数和 150 ms 指令时限。这些是台架起始参数，整车运行上限与停稳距离待运动试验确定。[厂商调速实现](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [厂商调速配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [环境与验收](bringup-and-acceptance.md)
