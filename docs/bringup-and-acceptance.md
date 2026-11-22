@@ -85,6 +85,8 @@ ctest --test-dir build/native-linux --output-on-failure
 
 2026-11-22 在 RDK X5 V1.0（Ubuntu 22.04.5 LTS，AArch64）上通过 Wi-Fi SSH 原生编译了主机库、联调工具及 C/C++ 示例。13 项 CTest 全部通过，其中串口用例使用 Linux 伪终端。上板使用源码构建的 ARM64 工具，构建命令与上面的 Linux 步骤相同。
 
+同日通过 Wi-Fi 登录 X5，用提交 `5ebaf6d` 的 `baize-monitor` 打开板载 CH340（`1a86:7523`，`/dev/ttyUSB0`，115200 bit/s）。静置采到 100 帧轮状态和 100 帧 IMU，按 STM32 采样时间复算分别为 50.00 Hz 和 49.92 Hz。全部轮状态均为未使能、主动停机，四轮速度为零且累计转角不变。底盘供电读数为 12.307～12.351 V。记录包中 `summary.json` 的 `time` 取自 X5，当时它的 UTC 时钟比电脑快约 8 小时。[逐帧 CSV 与采集摘要](measurements/2026-11-22-rdk-x5-usb.zip)
+
 ### 2026-11-22 上位机会话与实车数据回放
 
 - Windows 和 Linux 均从独立的 C++ 工程链接并运行 `baize_host`。桌面用例覆盖了初始停机回执丢失、待发目标遇到板端时钟倒退、已发使能后板端复位，以及 32 位板端时间自然回绕。Windows 四项、Linux 六项 CTest 通过。[主机接入](base-interface.md#上位机-c-库) · [会话测试](../tests/test_session.c)
