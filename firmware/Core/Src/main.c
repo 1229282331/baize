@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "baize_encoders.h"
+#include "encoders.h"
 #include "base_feedback.h"
 #include "base_motion.h"
 /* USER CODE END Includes */
@@ -59,7 +59,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 /* Front left, front right, rear left, rear right, in protocol order. */
 static TIM_HandleTypeDef *const encoder_timers[BAIZE_WHEELS] = { &htim4, &htim2, &htim5, &htim3 };
-static BaizeEncoders encoders;
+static Encoders encoders;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -155,7 +155,7 @@ int main(void)
       uint16_t counter[BAIZE_WHEELS];
       read_encoder_counters(counter);
       uint32_t elapsed_ms = now_ms - encoders.velocity_ms;
-      if (baize_encoders_sample(&encoders, counter, now_ms))
+      if (encoders_sample(&encoders, counter, now_ms))
       {
         uint8_t state, reason;
         base_motion_update(&encoders, elapsed_ms, &state, &reason);
@@ -164,7 +164,7 @@ int main(void)
         if (now_ms - last_status_ms >= 20u)
         {
           last_status_ms = now_ms;
-          base_feedback_status(&encoders, state, reason);
+          base_feedback_queue_status(&encoders, state, reason);
         }
       }
       base_feedback_poll(now_ms);

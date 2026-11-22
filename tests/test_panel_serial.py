@@ -14,7 +14,7 @@ from queue import Empty
 
 from test_monitor import imu, wire
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "host/panel"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools/panel"))
 from panel_session import READY, Session, library
 
 
@@ -53,9 +53,14 @@ class Bench:
                 kind = "ENABLE"
                 self.enabled, self.reason = True, 0
             else:
-                kind = "TARGET"
-                assert self.enabled and frame == wire(3, struct.pack("<4i", 1000, 0, 0, 0)), frame.hex()
-                self.speeds = (1000, 0, 0, 0)
+                assert frame == wire(3, struct.pack("<4i", 1000, 0, 0, 0)), frame.hex()
+                if self.enabled:
+                    kind = "TARGET"
+                    self.speeds = (1000, 0, 0, 0)
+                else:
+                    # The MCU ignores a target already in transit when it resets.
+                    assert self.reason == 1 and self.commands, self.commands[-6:]
+                    kind = "IGNORED_AFTER_RESET"
             self.commands.append((kind, time.monotonic()))
         if time.monotonic() >= self.next_sample:
             self.next_sample = time.monotonic()+.02
@@ -131,10 +136,14 @@ def exercise(lib, folder):
         assert b.result(2)["outcome"] == "stopped"
 
         b.jog(1800)
+        since_reset = len(b.commands)
         b.enabled, b.reason, b.tick = False, 1, 0  # A board reset interrupts the current target.
         b.speeds = (0, 0, 0, 0)
         assert b.result(3)["outcome"] == "interrupted"
         b.wait(lambda: b.session.serial_state == READY)
+        recovery = [kind for kind, _ in b.commands[since_reset:]]
+        assert "STOP" in recovery and set(recovery) <= {"IGNORED_AFTER_RESET", "STOP"}
+        assert not b.enabled and not any(b.speeds)
 
         b.jog(1800)
         b.emit_wheel = False  # New IMU frames keep arriving on the same wire.

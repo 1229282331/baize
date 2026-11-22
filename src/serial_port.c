@@ -49,6 +49,13 @@ int serial_read(SerialPort port, uint8_t *data, size_t size)
     return (int)received;
 }
 
+int serial_available(SerialPort port)
+{
+    COMSTAT status;
+    DWORD errors;
+    return ClearCommError(port, &errors, &status) ? (int)status.cbInQue : -1;
+}
+
 bool serial_write(SerialPort port, const uint8_t *data, size_t size)
 {
     DWORD written;
@@ -61,6 +68,7 @@ uint64_t monotonic_ms(void) { return GetTickCount64(); }
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/ioctl.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
@@ -96,6 +104,17 @@ int serial_read(SerialPort port, uint8_t *data, size_t size)
     ssize_t received = read(port, data, size);
     if (received < 0 && (errno == EAGAIN || errno == EINTR)) return 0;
     return received > 0 ? (int)received : -1;
+}
+
+int serial_available(SerialPort port)
+{
+    struct pollfd pfd = {.fd = port, .events = POLLIN};
+    int ready = poll(&pfd, 1, 0);
+    if (ready < 0 && errno == EINTR) return 0;
+    if (ready <= 0) return ready;
+    if (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) return -1;
+    int bytes;
+    return ioctl(port, FIONREAD, &bytes) == 0 ? bytes : -1;
 }
 
 bool serial_write(SerialPort port, const uint8_t *data, size_t size)

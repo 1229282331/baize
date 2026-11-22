@@ -1,6 +1,7 @@
 #include "baize_protocol.h"
 
 #undef NDEBUG
+#undef NDEBUG
 #include <assert.h>
 #include <string.h>
 

@@ -15,17 +15,54 @@
 
 ROS 2 轮关节使用 `rad` 和 `rad/s`。未来的 `SystemInterface` 为每个关节提供一个 `velocity` 命令接口和 `position`、`velocity` 两个状态接口。差速控制器用累计转角计算里程计。同一次连接中漏收单帧时，可以用下一帧的累计角度补上这段位移。建立新连接或识别到板端复位时，先建立新的角度基准，再累加后续差值。[ROS 2 差速控制器接口](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html)
 
-插件的 `write()` 将四个关节目标交给主机库，`read()` 将库提供的最新有效轮状态填入关节接口。主机库负责将线路上的 mrad 和 mrad/s 换算为 rad 和 rad/s。插件在控制器更新周期内读取已有反馈，轮反馈过期时上报通信异常。[下一版主机库设计](#下一版主机库设计)
+插件的 `write()` 将四个关节目标交给主机库，`read()` 将库提供的最新有效轮状态填入关节接口。主机库负责将线路上的 mrad 和 mrad/s 换算为 rad 和 rad/s。插件在控制器更新周期内读取已有反馈，轮反馈过期时上报通信异常。[主机库读写接口](#主机库读写接口)
 
 本车轮式里程计的初始参数取厂商标称轮周长 0.496371 m（轮半径约 0.0790 m）和左右轮距 0.265 m。一次直行的估计距离等于四轮平均转角增量乘以标称轮半径。[几何参数来源](architecture.md#标定与验收依据)
 
-六轴数据对应 ROS 2 的 `imu/data_raw`（`sensor_msgs/msg/Imu`），`frame_id` 为 `imu_link`。主机将加速度和角速度都除以 1000，分别填入 `linear_acceleration`（m/s²）和 `angular_velocity`（rad/s）。姿态由上位机融合，原始消息填 `orientation_covariance[0] = -1`。另两项协方差未知时填全零。用静态变换描述 `imu_link` 在 `base_link` 中的位置和朝向，车身坐标取 x 向前、y 向左、z 向上。时间戳用板端采样时间映射到主机时钟，重连或板端复位后重建映射，日志另存主机接收时间。[ROS IMU 坐标与话题约定](https://reps.openrobotics.org/rep-0145/) · [Jazzy Imu 消息定义](https://github.com/ros2/common_interfaces/blob/jazzy/sensor_msgs/msg/Imu.msg)
+六轴数据对应 ROS 2 的 `imu/data_raw`（`sensor_msgs/msg/Imu`），`frame_id` 为 `imu_link`。插件将主机库提供的两组三轴值分别填入 `linear_acceleration`（m/s²）和 `angular_velocity`（rad/s）。姿态由上位机融合，原始消息填 `orientation_covariance[0] = -1`。另两项协方差未知时填全零。用静态变换描述 `imu_link` 在 `base_link` 中的位置和朝向，车身坐标取 x 向前、y 向左、z 向上。时间戳用板端采样时间映射到主机时钟，重连或板端复位后重建映射，日志另存主机接收时间。[ROS IMU 坐标与话题约定](https://reps.openrobotics.org/rep-0145/) · [Jazzy Imu 消息定义](https://github.com/ros2/common_interfaces/blob/jazzy/sensor_msgs/msg/Imu.msg)
 
 本车安装方向经水平、抬车头和左右转复核。按车身 x 向前、y 向左、z 向上的约定，三个传感器轴分别同向对应三个车身轴。对于这一轴向近似，`imu_link` 到 `base_link` 的旋转四元数按 ROS 的 `x,y,z,w` 顺序为 `[0, 0, 0, 1]`。模块相对车身原点的平移和小安装角未测。此次水平静止加速度模长约 9.28 m/s²，陀螺有静止偏置。[安装与转向实测](bringup-and-acceptance.md#空载正式版实车验收)
 
+## 主机库读写接口
+
+应用从仓库根目录引入 CMake 目标 `baize_host`。C++11 包含 `<baize/chassis.hpp>`，C11 包含 `<baize/chassis.h>`。两者使用同一份串口读写、握手和单位换算实现。每个连接由一个 I/O 循环持有。[C++ 头文件](../include/baize/chassis.hpp) · [C 头文件](../include/baize/chassis.h)
+
+```cmake
+add_subdirectory(3rdparty/baize baize EXCLUDE_FROM_ALL)
+target_link_libraries(controller PRIVATE baize_host)
+```
+
+打开端口并使能后，应用可在每个控制周期执行下列函数。调用者根据返回值处理中断，结束运动时调用 `disable()` 确认停机。
+
+```cpp
+bool update(baize::Chassis &chassis, double forward_m_s, double yaw_rate_rad_s)
+{
+    baize::ChassisState state{};
+    if (!chassis.read(state) || !state.drive.valid) return false;
+    const auto wheels = baize::to_wheel_speeds(baize::nominal_geometry(), forward_m_s, yaw_rate_rad_s);
+    return chassis.write(wheels);
+}
+```
+
+| 操作 | 语义 |
+| --- | --- |
+| `open(port)` | 清空旧输入，发送 STOP，最多等待约 1 s。通常以已确认的未使能状态打开。遇到板端锁存故障也可打开，读取 `state.drive.state` 和 `stop_reason` 诊断。C 函数返回句柄或空指针。 |
+| `enable()` | 以新鲜的主动停机回执为前提。收到随后已使能的轮反馈才返回成功。 |
+| `read(state)` | 处理调用时串口里已有的字节，取最近快照。检查 `state.drive.valid` 和 `state.imu.valid`。两路各有板端 `sample_ms`，连续 250 ms 没有新样本时相应标志失效，重复样本不能延长有效期。I/O 错误返回失败，两路均失效，需要关闭并重开端口。 |
+| `write(wheels)` | 一次提交四个 `WheelSpeeds.rad_s`，按左前、右前、左后、右后排列。每项必须为有限数且在 ±2 rad/s 内，越界整组拒绝。成功表示目标帧已交给串口，跟踪结果从下一批轮反馈读取。 |
+| `disable()`、`close()` | 停用发送 STOP 并等待新回执，已缓存或只收到半帧的旧回执不能确认本次请求。关闭端口时尽力发送 STOP 再释放资源。C++ 对象析构也会关闭。重连后须重新使能并给新目标。 |
+
+轮端数据在 `state.drive` 中，累计角度 `angle_rad[4]`、角速度 `velocity_rad_s[4]`、电压 `supply_v`（ADC 尚无读数时为 NaN）、驱动状态和停机原因来自同一帧。`state.imu` 单独提供三轴加速度 `acceleration_m_s2` 和三轴角速度 `angular_velocity_rad_s`。采样毫秒是板端 32 位时间，可自然回绕。库用主机单调时钟判断反馈有效期。
+
+持续运动建议每 20 ms 读一次、提交一次最新目标。写入零速仍保持使能。停止提交后，板端按 150 ms 命令时限撤销使能。轮反馈过期或底盘复位时，库请求停机，旧目标随即失效。IMU 缺样只影响六轴数据的有效性。
+
+差速函数只做换算。设前进速度为 `v`（m/s，朝前为正）、转向角速度为 `ω`（rad/s，朝左为正）、轮半径为 `r`、左右轮距为 `b`，左右两侧的轮角速度分别为 `(v − ωb/2)/r` 和 `(v + ωb/2)/r`。使用本车标称几何，0.079 m/s 直行对应四轮各约 +1 rad/s。已有四个关节目标的上层直接写轮速。[本车几何参数](architecture.md#标定与验收依据) · [WPILib 差速运动学](https://docs.wpilib.org/en/stable/docs/software/kinematics-and-odometry/differential-drive-kinematics.html)
+
+两个示例工程都能复制到仓库外，用 `cmake -S <示例目录> -B <构建目录> -DBAIZE_SOURCE_DIR=<本仓库绝对路径>` 配置，再执行 `cmake --build <构建目录>`。四轮架空时运行 `chassis-example PORT` 或 `chassis-c-example PORT`，会以约 +0.5 rad/s 短时直行、停机和重连。加 `--turn` 进行同幅值左转。Windows 口名如 `COM17`，Linux 如 `/dev/ttyUSB0`。[C++ 示例](../examples/chassis/main.cpp) · [C 示例](../examples/c/main.c)
+
 ## 上位机 C 库
 
-C 和 C++ 应用通过 CMake 目标 `baize_host` 使用串口、v1 编解码和启停会话。假设应用已有 `controller` 目标，并将本仓库放在 `third_party/baize`，可在应用的 CMakeLists.txt 中加入下列两行。Windows 和 Linux 的接入方式相同。
+v1.0.0 应用可以沿用原来的构建入口、头文件和线路单位。这一入口通过 CMake 目标 `baize_host` 使用串口、v1 编解码和启停会话。假设应用已有 `controller` 目标，并将本仓库放在 `third_party/baize`，可在应用的 CMakeLists.txt 中加入下列两行。Windows 和 Linux 的接入方式相同。
 
 ```cmake
 add_subdirectory(third_party/baize/host baize-host EXCLUDE_FROM_ALL)
@@ -34,7 +71,7 @@ target_link_libraries(controller PRIVATE baize_host)
 
 在一个 I/O 循环中持有串口和会话。所有 `now_ms` 使用同一主机单调时钟，传入 `(uint32_t)monotonic_ms()` 即可。C 结构体保留线路单位，上层以 rad 或 rad/s 工作时在应用边界换算。
 
-仓库提供可单独复制的 [C++ 工程](../examples/chassis/)。将该目录复制到仓库外，以 `cmake -S <示例目录> -B <构建目录> -DBAIZE_SOURCE_DIR=<本仓库绝对路径>` 配置，再执行 `cmake --build <构建目录>`。使用 Ninja 时，运行构建目录中的 `chassis-example COM7`（Windows）或 `./chassis-example /dev/ttyUSB0`（Linux）。换成实际串口名，首次在四轮架空时运行。程序取得停机回执后使能，给四轮各 +0.5 rad/s、持续 300 ms，输出两路样本和板端时间，停机并关闭串口。第二次打开端口完成新的停机握手，以未使能结束。程序可在 IMU 缺失时继续处理轮反馈。
+原版示例自行收发每个字节并将 mrad 换算为 rad。已用标签上的源文件和 CMake 工程原样编译并复验。[v1.0.0 原示例](https://github.com/1229282331/baize/tree/v1.0.0/examples/chassis)
 
 | 操作 | 调用与判断 |
 | --- | --- |
@@ -43,22 +80,7 @@ target_link_libraries(controller PRIVATE baize_host)
 | 使能和给速 | 应用明确请求使能时调用 `baize_session_enable`，返回 true 就立即发送它写出的使能帧。收到已使能反馈后，用 `baize_session_target` 提交四个 mrad/s 值（+1 rad/s 写 1000）。约每 20 ms 调用 `baize_session_next`，即使没有新目标也检查一次，返回 true 就发送该帧。一次提交最多发送一次，持续运动由控制程序持续提交新目标。 |
 | 停机和退出 | `baize_session_stop` 丢弃待发目标，随即用 `baize_session_next` 取出并发送停机帧。继续处理收发，直至会话进入 `BAIZE_READY` 或等待超时。串口读写失败时向调用者报告并关闭串口，重开后重新握手。 |
 
-轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并重新请求停机。上层据此重建角度和时钟基准。相同轮时间、状态和原因的重复帧不会刷新反馈计时。IMU 用独立的采样时间去重。[会话接口](../host/baize_session.h) · [串口接口](../host/serial_port.h) · [联调工具调用示例](../host/monitor.c)
-
-## 下一版主机库设计
-
-2026-11-22 确认，待实现。C++ 程序通过 `<baize/chassis.hpp>` 使用 `baize::Chassis`。纯 C 程序通过 `<baize/chassis.h>` 调用同一份实现。普通应用、控制面板和未来的 ROS 2 硬件插件都链接 `baize_host`，由库处理串口收发、启停握手和线路单位换算。当前 v1.0.0 的调用方法见[上位机 C 库](#上位机-c-库)。
-
-| 周期操作 | 调用约定 |
-| --- | --- |
-| `chassis.read(state)` | 读取最近的四轮累计角度（rad）和角速度（rad/s）、电源电压（V）、驱动状态、停机原因，以及可选的六轴数据（m/s²、rad/s）。轮状态和 IMU 各有采样时间与有效性，一次读取可以取得不同时间的两组测量。 |
-| `chassis.write(wheels)` | `WheelSpeeds` 一次给定左前、右前、左后、右后四个带符号的目标角速度（rad/s）。持续运动由调用者周期提交，建议间隔 20 ms。写入成功说明主机已提交目标帧，实际响应由轮反馈确认。 |
-
-连接和驱动使能分别管理。打开或重连时先取得停机回执，显式使能后才能给速。持续写入零目标时驱动保持使能。停用时发 STOP 并确认撤销使能。停止续发后由板端按 150 ms 指令时限停机。轮反馈过期时主机丢弃待发目标并请求停机，IMU 缺样单独报告。
-
-独立函数 `baize::to_wheel_speeds(geometry, forward_m_s, yaw_rate_rad_s)` 只做差速换算。普通程序把前进速度 `v`（m/s，向前为正）和转向角速度 `ω`（rad/s，向左为正）换成四轮目标，再调用同一个 `write`。若调用者已持有轮关节目标，如未来的 `ros2_control` 插件，可直接写入。设轮半径为 `r`、左右轮距为 `b`，则左侧两轮角速度为 `(v − ωb/2)/r`，右侧两轮为 `(v + ωb/2)/r`。按本车标称几何，给定 0.079 m/s 直行时四轮目标均约为 +1 rad/s。[本车几何参数](architecture.md#标定与验收依据) · [WPILib 差速运动学](https://docs.wpilib.org/en/stable/docs/software/kinematics-and-odometry/differential-drive-kinematics.html) · [SFU libcreate 的整车与轮速调用](https://github.com/AutonomyLab/libcreate/blob/master/src/create.cpp#L435)
-
-接入验收覆盖 Windows 和 Linux。仓库外的 C 与 C++ 示例各自只包含公开头，用同一组直行和左转输入核对轮序、符号、单位，并验证启停和重连。另用 v1.0.0 的原有 C++ 示例及协议测试向量检查兼容性。[源码布局与命名](architecture.md#下一版源码布局与命名)
+轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并重新请求停机。上层据此重建角度和时钟基准。相同轮时间、状态和原因的重复帧不会刷新反馈计时。IMU 用独立的采样时间去重。[会话接口](../src/baize_session.h) · [串口接口](../src/serial_port.h)
 
 ## 启停与异常行为
 

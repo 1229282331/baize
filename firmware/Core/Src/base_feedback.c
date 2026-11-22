@@ -59,7 +59,7 @@ static uint16_t sample_supply_mv(void)
     return mv;
 }
 
-void base_feedback_status(const BaizeEncoders *encoders, uint8_t state, uint8_t reason)
+void base_feedback_queue_status(const Encoders *encoders, uint8_t state, uint8_t reason)
 {
     status_frame.type = BAIZE_STATUS;
     BaizeStatus *status = &status_frame.status;

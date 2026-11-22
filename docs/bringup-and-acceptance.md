@@ -25,6 +25,21 @@
 
 交付包中 `records/empty-field` 含逐帧数据、控制记录、现场观察和汇总。解压后运行 `python -B analysis/visit_report.py records/empty-field records/empty-field/ground` 可复算结果。一小时通信记录中，Windows 有三次轮反馈到达间隔达到 250 ms 时限，最长 765 ms。板端同期仍按 20 ms 采样。上层继续按主机单调时钟判定轮反馈过期。[一小时原始记录与到达间隔](#ch340-连续一小时记录)
 
+## 主机读写接口实车复验
+
+2026-11-22，在四轮架空的本车上，以 Windows 和板载 CH340（COM17，115200 bit/s）复验 `main` 的公开接口。STM32 Release 从干净源码重建得到 22,480 字节，与 v1.0.0 包内的 `firmware/chassis.bin` 逐字节相同。此次使用车上已验收的固件。[公开接口与单位](base-interface.md#主机库读写接口) · [本次原始记录](measurements/2026-11-22-chassis-api.zip)
+
+| 上位机程序 | 指令 | 编码器与启停结果 |
+| --- | --- | --- |
+| 仓库外的 C、C++ 示例 | 两个程序各做一次直行和左转。直行四轮 +0.50 rad/s，左转左侧 −0.50、右侧 +0.50 rad/s。 | 四次均读到轮状态和 IMU，每次有 9～12 个不同采样时刻的四轮误差同时在 ±0.15 rad/s 内。各次停机并重新打开后均为未使能。 |
+| v1.0.0 标签上的原版 C++ 示例 | 原样编译并链接当前主机库，四轮各 +0.50 rad/s。 | 14 个不同采样时刻的四轮同时落入上述误差范围，停机、重连通过。 |
+| 当前及 v1.0.0 发布包内的命令行工具 | 分别给右前轮 +0.50 rad/s，持续 360 ms。 | 两次均有主动停机回执，两工具分别记录 25、24 帧轮状态，以及同样数量的 IMU 帧。 |
+| 当前控制面板串口线程 | 给左前轮 +0.50 rad/s，持续 1 s。 | 末段 11 帧均速为 [0.503, 0, 0, 0] rad/s，左前轮累计转过 0.490 rad，其余三轮转角未变。停机后四轮编码器连续静止 100 ms。 |
+
+实车验证结束时，监视工具收到 20 帧轮反馈及 19 帧 IMU，末 6 帧覆盖 100 ms，均为未使能、主动停机，四轮速度为零且转角不变。压缩包内的 `summary.json` 给出每趟结果，`*-stopped-wheels.csv` 记录各次重开后的状态。解压后可用 `python -B scripts/wheel_acceptance.py replay <解压目录>/panel` 从逐帧数据复算面板试次。
+
+同一份源码在 Windows 通过 8 项、Ubuntu 24.04 通过 13 项 CTest。两平台均从仓库外分别构建纯 C、C++ 和原版 C++ 客户端。Ubuntu 的串口验证使用伪终端，覆盖直行、左转、失联、板端复位和重连。模拟串口还验证了请求前积压的完整状态帧和已接收一部分的旧帧都不能确认本次停机。[握手与超时用例](../tests/test_chassis.c) · [串口客户端用例](../tests/test_chassis_serial.py)
+
 ## Windows 开发环境
 
 本机已验证 CubeCLI 0.10.4。项目锁定 GNU Tools for STM32 14.3.1+st.2、CMake 4.3.1+st.1 和 Ninja 1.13.2+st.1。新机器先安装 CubeCLI，在新终端从仓库根目录执行下列命令。普通构建直接使用仓库中的启动文件、链接脚本和驱动源码。[CubeCLI 安装](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_Installation.html) · [项目工具锁](../firmware/.settings/bundles-lock.store.json)
@@ -44,22 +59,22 @@ cube cmake --build --preset Debug
 
 ## 桌面验证
 
-从仓库根目录执行以下命令。本机使用原生 GCC 12.1、CMake 和 Ninja。四项 C 测试分别验证协议、板端驱动状态、编码器计数和上位机会话。安装 Python 后还会运行地面几何与 IMU 标定测试，Python 3.10 及以上可运行控制面板回归。编码器测试覆盖正反向跨零、静止、反转回到起点和超出有符号 32 位范围的累计值，并检查四路按厂商符号正反转一整圈时分别得到 +6283 和 −6283 mrad。
+从仓库根目录执行以下命令。本机使用原生 GCC 12.1、CMake 和 Ninja。C 测试覆盖协议、板端驱动状态、编码器、兼容会话和公开底盘接口。安装 Python 后还会运行地面几何与 IMU 标定测试，Python 3.10 及以上可运行控制面板回归。编码器测试覆盖正反向跨零、静止、反转回到起点和超出有符号 32 位范围的累计值，并检查四路按厂商符号正反转一整圈时分别得到 +6283 和 −6283 mrad。
 
 ```powershell
-cmake -S tests -B build/desktop -G Ninja -DCMAKE_C_COMPILER=gcc
-cmake --build build/desktop
-ctest --test-dir build/desktop --output-on-failure
+cmake -S . -B build/native -G Ninja -DCMAKE_C_COMPILER=gcc
+cmake --build build/native
+ctest --test-dir build/native --output-on-failure
 ```
 
 五个文档样例逐字节比对，覆盖分段收帧、连续帧、超长帧和错误帧后的恢复。模拟时钟验证启停、整组目标越界、超时边界、毫秒回绕和故障恢复。主机每次打开串口时应先清空串口输入缓冲并重建会话，立即发停机，收到未使能且原因为主动停机的新状态后方可请求使能。新目标在收到已使能反馈后提交，每次提交最多发送一次。只收到 IMU 数据时，四轮状态仍可过期并触发停机。[协议样例](base-interface.md) · [桌面测试](../tests/)
 
-Linux 安装 Python 3.10 及以上，可用下面的命令复测全部十一项。其中四项通过伪终端运行主机工具和面板串口线程，检查双路采集、限时点动、停机、重连和地面单趟记录。点动回归会在持续产生已使能反馈时暂停上位机进程 550 ms，让状态帧积存在系统缓冲区。恢复进程后，工具须发出停机、结束本次点动，旧目标续发次数须为零。[上位机点动回归](../tests/test_jog.py) · [面板串口回归](../tests/test_panel_serial.py)
+Linux 安装 Python 3.10 及以上，可用下面的命令复测全部十三项。其中五项通过伪终端运行 C/C++ 客户端、主机工具和面板串口线程，检查双路采集、限时点动、停机、重连和地面单趟记录。点动回归会在持续产生已使能反馈时暂停上位机进程 550 ms，让状态帧积存在系统缓冲区。恢复进程后，工具须发出停机、结束本次点动，旧目标续发次数须为零。[上位机点动回归](../tests/test_jog.py) · [面板串口回归](../tests/test_panel_serial.py)
 
 ```sh
-cmake -S tests -B build/linux-tests
-cmake --build build/linux-tests
-ctest --test-dir build/linux-tests --output-on-failure
+cmake -S . -B build/native-linux
+cmake --build build/native-linux
+ctest --test-dir build/native-linux --output-on-failure
 ```
 
 桌面状态机边界样例使用各自的速度上限和模拟时钟。实车编码器采用厂商默认配置，台架控制限幅和指令时限随对应固件记录。
@@ -79,45 +94,45 @@ ctest --test-dir build/linux-tests --output-on-failure
 **Windows（PowerShell）**
 
 ```powershell
-cmake -S host -B build/host -G Ninja -DCMAKE_C_COMPILER=gcc
-cmake --build build/host
-.\build\host\baize-monitor.exe COM7 250 > build/host/status.csv
+cmake -S . -B build/native -G Ninja -DCMAKE_C_COMPILER=gcc
+cmake --build build/native
+.\build\native\tools\baize-monitor.exe COM7 250 > build/native/status.csv
 ```
 
 **Linux**
 
 ```sh
-cmake -S host -B build/linux-host
-cmake --build build/linux-host
-./build/linux-host/baize-monitor /dev/ttyUSB0 250 > build/linux-host/status.csv
+cmake -S . -B build/native-linux
+cmake --build build/native-linux
+./build/native-linux/tools/baize-monitor /dev/ttyUSB0 250 > build/native-linux/status.csv
 ```
 
-工具以 115200、8N1 打开串口并发送停机。实物验收时，复位后打开端口，应收到驱动未使能（`drive_state=0`）且停机原因为主动停机（`stop_reason=2`）的状态。CSV 前两列分别是从本次打开起的主机接收时间和板端采样时间，单位均为 ms。四轮顺序为左前、右前、左后、右后，转角为 rad，角速度为 rad/s，电压为 V，无有效电压时留空。连续 1 秒没有有效底盘状态，工具报错退出。[监视工具源码](../host/monitor.c)
+工具以 115200、8N1 打开串口并发送停机。实物验收时，复位后打开端口，应收到驱动未使能（`drive_state=0`）且停机原因为主动停机（`stop_reason=2`）的状态。CSV 前两列分别是从本次打开起的主机接收时间和板端采样时间，单位均为 ms。四轮顺序为左前、右前、左后、右后，转角为 rad，角速度为 rad/s，电压为 V，无有效电压时留空。连续 1 秒没有有效底盘状态，工具报错退出。[监视工具源码](../tools/monitor.c)
 
 同时采集六轴时，在帧数后加 `--imu-csv build/imu.csv`。两个文件分别保存各自的采样时间，帧数仍按轮状态计算。IMU 文件三轴加速度为 m/s²，三轴角速度为 rad/s。连续 1 秒没有六轴新样本时，工具在标准错误报告一次，轮状态继续记录。六轴恢复时报告恢复并续写原文件。
 
 **架空点动。** 四轮悬空后，下面的例子只给左前轮下发 +0.5 rad/s，持续 300 ms。依次替换四个轮速中的非零项即可核对轮序与方向。工具先确认主动停机，再使能，收到已使能反馈后按约 20 ms 间隔发送目标。到时或按 Ctrl+C 发停机，等待未使能和主动停机原因。反馈失联中止本次点动。工具接受 1～2000 ms 和每轮 ±2 rad/s，轮状态可直接重定向保存。
 
 ```powershell
-.\build\host\baize-monitor.exe COM7 --jog 300 0.5 0 0 0 --imu-csv build/host/jog-imu.csv > build/host/jog-wheels.csv
+.\build\native\tools\baize-monitor.exe COM7 --jog 300 0.5 0 0 0 --imu-csv build/native/jog-imu.csv > build/native/jog-wheels.csv
 ```
 
 ### 本机控制面板
 
-Windows 双击启动脚本。首次运行会用 CMake、Ninja 和本机 GCC 构建串口库。界面使用 Python 3.10 及以上的 Tk 绑定，借助标准库 ctypes 调用与命令行工具相同的 C 串口会话和点动逻辑。串口下拉框优先显示已插入的 CH340，本车当前为 COM17。切换到命令行工具前先在面板上点「断开」，将端口交给新程序。[启动底盘控制台](../host/panel/启动底盘控制台.cmd) · [Python Tk 文档](https://docs.python.org/3/library/tkinter.html)
+Windows 双击启动脚本。首次运行会用 CMake、Ninja 和本机 GCC 构建串口库。界面使用 Python 3.10 及以上的 Tk 绑定，借助标准库 ctypes 调用与命令行工具相同的 C 串口会话和点动逻辑。串口下拉框优先显示已插入的 CH340，本车当前为 COM17。切换到命令行工具前先在面板上点「断开」，将端口交给新程序。[启动底盘控制台](../tools/panel/启动底盘控制台.cmd) · [Python Tk 文档](https://docs.python.org/3/library/tkinter.html)
 
-Linux 桌面需安装 Tk，Ubuntu 对应软件包为 `python3-tk`。从仓库根目录执行以下命令。省略 `--port` 可在窗口中选择或输入端口。Windows 也可在上述主机工具构建完成后运行 `python -B host/panel/baize-panel.pyw --port COM17`。
+Linux 桌面需安装 Tk，Ubuntu 对应软件包为 `python3-tk`。从仓库根目录执行以下命令。省略 `--port` 可在窗口中选择或输入端口。Windows 也可在上述主机工具构建完成后运行 `python -B tools/panel/baize-panel.pyw --port COM17`。
 
 ```sh
-cmake -S host -B build/linux-host
-cmake --build build/linux-host --target baize_panel_io
-python3 -B host/panel/baize-panel.pyw --port /dev/ttyUSB0
+cmake -S . -B build/native-linux
+cmake --build build/native-linux --target baize_panel_io
+python3 -B tools/panel/baize-panel.pyw --port /dev/ttyUSB0
 ```
 
 1. 点「连接」，等停机回执。此时可看四轮的速度、累计转角、电压和独立的六轴反馈。连接与重连均从未使能开始。
 2. 四轮架空时，选「单轮」和轮位、方向，或选「整车」的前进、后退和原地转向。「四轮自定」可逐轮输入有符号目标。点「开始点动」才会使能并给速。每轮可给 ±2 rad/s，每次最长 2 s。到时自动停机，随时可按 Esc 或窗口顶部的「停机」。
 3. 在「试次记录」选一次点动，核对目标、末段均速、轮角增量、停机回执和编码器停稳情况。实际轮位及轮胎上缘方向可当场填写或集中补记。保存单轮观察时，面板按“正目标时上缘朝车头”比对轮位与方向，并单独显示结果。
-4. 采集 IMU 安装姿态时，先停稳车辆，选实际朝上的车身一面，再点「采集此姿态」。每次保存至少 125 帧，在同一次连接下完成六面和一次独立放平后，`poses` 目录可直接交给已有的标定脚本。[IMU 标定脚本](measurements/imu_calibration.py)
+4. 采集 IMU 安装姿态时，先停稳车辆，选实际朝上的车身一面，再点「采集此姿态」。每次保存至少 125 帧，在同一次连接下完成六面和一次独立放平后，`poses` 目录可直接交给已有的标定脚本。[IMU 标定脚本](../scripts/imu_calibration.py)
 
 **后台判断。** 「反馈符合」要求本次点动正常到时，轮反馈连续、使能区间完整，末 200 ms 至少有 9 帧且覆盖 160 ms。运动轮的平均角速度和转角增量须与目标同号，均速误差不超过 0.05 rad/s 与目标幅值 20% 二者中的较大值。零目标轮偏离起始角不超过 0.02 rad。还须收到主动停机回执，并观测到四轮角速度为零、编码器轮角连续至少 100 ms 不变。短点动可能显示「样本不足」。这些阈值用于轮端点动筛查，物理轮位和方向由现场观察核对。
 
@@ -130,11 +145,11 @@ python3 -B host/panel/baize-panel.pyw --port /dev/ttyUSB0
 控制面板断开端口后，可在四轮架空、IMU 已连接时运行下列第一条命令。程序复用面板串口库，自动完成八组单轮正反转、四轮同速的 ±0.35 与 ±2 rad/s、四个独立目标、提前停机和重连。每个动作限时，某项未通过即停止并保留原始记录。输出目录须是新目录。
 
 ```powershell
-python -B docs/measurements/wheel_acceptance.py run COM17 build/acceptance-01
-python -B docs/measurements/wheel_acceptance.py replay build/acceptance-01/motion
+python -B scripts/wheel_acceptance.py run COM17 build/acceptance-01
+python -B scripts/wheel_acceptance.py replay build/acceptance-01/motion
 ```
 
-第二条命令只读磁盘，也适用于面板以前保存的会话。它从轮反馈 CSV 重算均速、转角、停机回执和停稳时间，逐项对照试次 JSON，并报告两路采样数量与最大接收间隔。空载地面行程、车身停距和安装变换使用各自的测量记录。[验收程序](measurements/wheel_acceptance.py)
+第二条命令只读磁盘，也适用于面板以前保存的会话。它从轮反馈 CSV 重算均速、转角、停机回执和停稳时间，逐项对照试次 JSON，并报告两路采样数量与最大接收间隔。空载地面行程、车身停距和安装变换使用各自的测量记录。[验收程序](../scripts/wheel_acceptance.py)
 
 操作者已在车旁确认各轮及整车动作符合预期。在面板会话 `20261122-145904-195468` 的 20 次点动中，19 次正常到时，一次手动提前停机，20 次均有停机回执和编码器停稳记录。离线复算读取了 60,648 帧轮反馈和 60,547 帧 IMU。另一次架空自动复验完成 14 次点动，重新连接后连续收到 20 帧静止轮反馈。
 
@@ -233,7 +248,7 @@ CN3 第 19 脚为探针侧 VDD（3.3 V），本车接线将其留空。第 15 �
 
 ### 轮速 PI 阶跃响应
 
-2026-11-22 离线复核了上一节 26 组架空记录。用相邻原始编码器计数差重新换算轮速，将记录的目标、轮速、周期和各组限幅输入固件的 C 函数，再按板端换向规则核对 PWM。7655 个周期共 30620 个单轮输出与记录一致，其中 7564 个单轮更新带有非零目标。[轮速计算](../firmware/control/baize_encoders.c) · [PI 实现](../firmware/control/baize_drive.c) · [原始记录](measurements/2026-11-21-wheel-bench.zip)
+2026-11-22 离线复核了上一节 26 组架空记录。用相邻原始编码器计数差重新换算轮速，将记录的目标、轮速、周期和各组限幅输入固件的 C 函数，再按板端换向规则核对 PWM。7655 个周期共 30620 个单轮输出与记录一致，其中 7564 个单轮更新带有非零目标。[轮速计算](../firmware/control/encoders.c) · [PI 实现](../firmware/control/drive.c) · [原始记录](measurements/2026-11-21-wheel-bench.zip)
 
 下表取 25% 限幅、单轮从静止给 ±0.50 rad/s 的八次点动。每格按正向 / 反向排列。以首条非零目标的板端收令时刻为零点，`t10`、`t90` 分别取沿目标方向连续三个 5 ms 样本达到目标幅值 10%、90% 时的首个样本。峰值超调按整个给定期间计算，末段占空比取撤去目标前 100 ms 的输出绝对值平均。
 
@@ -253,7 +268,7 @@ CN3 第 19 脚为探针侧 VDD（3.3 V），本车接线将其留空。第 15 �
 从仓库根目录运行下列命令，可按每个有目标的轮通道复算指标。脚本使用 Python 标准库，输出 CSV，未达到的阈值留空。
 
 ```sh
-python docs/measurements/wheel_response.py docs/measurements/2026-11-21-wheel-bench.zip
+python scripts/wheel_response.py docs/measurements/2026-11-21-wheel-bench.zip
 ```
 
 ### 四轮架空调参复验
@@ -292,7 +307,7 @@ python docs/measurements/wheel_response.py docs/measurements/2026-11-21-wheel-be
 **复算与回退。** 数据包内 `configs.csv` 和 `trials.csv` 给出逐组参数、试验名和样本数。`ref700-accept-*`、`tuned-accept-*` 对应上表两版单轮对照，`acceptance-*` 为独立复验。运行下列命令可复算全部恒定目标的指标，`sequences/` 保留换向和零目标的完整时序。两条探索记录分别出现过归中后和非目标通道的单个编码器计数变化，对应 PWM 均为零，原记录及备注保存在数据包内。
 
 ```sh
-python docs/measurements/wheel_response.py docs/measurements/2026-11-22-wheel-tune.zip
+python scripts/wheel_response.py docs/measurements/2026-11-22-wheel-tune.zip
 ```
 
 常规 Debug 镜像为 36,760 字节，SHA-256 为 `b55ae4c3af40586d80cc91c014a5c7a7e11cbae72c17d370c7ff2ff84e48ebc7`。已烧回常规固件，从 Flash 独立读回 49,152 字节，核对了镜像和台架试验前保存的页尾。复位后读回四轮增益及零积分，驱动未使能，四路 CCR 均为 2000，编码器静止。另从板端样本时间测得轮状态 50.00 Hz、IMU 49.92 Hz。Debug、Release 构建和 Windows 四项、Linux 六项桌面测试通过。本机镜像、读回和调试记录位于 `%LOCALAPPDATA%\Baize\Validation\20261122-031413-tune\`。前一版常规固件保存在同级的 `20261121-171602-wheels\` 目录。
@@ -346,7 +361,7 @@ python docs/measurements/wheel_response.py docs/measurements/2026-11-22-wheel-tu
 从仓库根目录运行下列命令，可复算每个轮次的起动时间、最长无进展时间、滑窗误差、逐点误差、PWM 变化和三项判据。数据包中的 `trials.csv` 标记了目标及板端收令时间，`configs.csv` 给出三种控制器的参数。
 
 ```sh
-python -B docs/measurements/wheel_floor.py docs/measurements/2026-11-22-wheel-floor.zip
+python -B scripts/wheel_floor.py docs/measurements/2026-11-22-wheel-floor.zip
 ```
 
 从相邻原始计数复算了轮速，用对应控制器的 C 函数回放，263,672 个单轮 PWM 均与板端记录相符，其中 223,156 个另经常规固件的 PI 函数核对。试验后已烧回常规固件，独立读回的 49,152 字节与试验前逐字节一致。复位后驱动未使能，四路 CCR 均为 2000，四轮编码器静止。本机归档位于 `%LOCALAPPDATA%\Baize\Validation\20261122-wheel-floor\`。
@@ -373,7 +388,7 @@ python -B docs/measurements/wheel_floor.py docs/measurements/2026-11-22-wheel-fl
 本轮含探索和超时共 142 组，采集 41,919 个 5 ms 控制输出样本，板载电压读数 12.204～12.465 V。60 组快速调节试验的板内计数器均未记录节拍遗漏。5 ms 控制组共 96,108 个单轮输出另经常规 C 函数回放一致。复验表可用下列命令复算，筛选 `phase=hold`。数据包内的 `diagnostic.patch` 以 `6205664` 为基准。本机试验记录在 `%LOCALAPPDATA%\Baize\Validation\20261122-wheel-crawl\`。试验后已烧回常规镜像，独立读回 49,152 字节与试验前一致，复位后未使能、四轮静止。
 
 ```sh
-python -B docs/measurements/wheel_floor.py docs/measurements/2026-11-22-wheel-crawl.zip
+python -B scripts/wheel_floor.py docs/measurements/2026-11-22-wheel-crawl.zip
 ```
 
 ### 空载 v1 候选版的台架记录
@@ -490,17 +505,17 @@ python -B docs/measurements/wheel_floor.py docs/measurements/2026-11-22-wheel-cr
 | `reference` | 卷尺量得的有符号米数，或角度标记量得的有符号度数。 |
 | `run`、`settled` | 相对于清单的点动和停稳 CSV 路径。若同一日志已覆盖停稳，`settled` 留空。 |
 
-从仓库根目录运行 `python docs/measurements/ground_geometry.py <清单.csv>`。左右侧轮角各取前后两轮的平均增量。程序按直行距离拟合有效半径，以左右行程差和参考转角拟合有效轮距，输出周长及每条留出路线的误差。它检查同一次启动的板端时钟、一次使能过程和停机后至少 100 ms 的静止反馈；重复使用同一记录会报错。把实测半径和轮距填入上位机差速控制器的 `wheel_radius` 和 `wheel_separation`。速度范围、持续时间和停距按所用地面与载荷单独记录。[复算工具](measurements/ground_geometry.py)
+从仓库根目录运行 `python scripts/ground_geometry.py <清单.csv>`。左右侧轮角各取前后两轮的平均增量。程序按直行距离拟合有效半径，以左右行程差和参考转角拟合有效轮距，输出周长及每条留出路线的误差。它检查同一次启动的板端时钟、一次使能过程和停机后至少 100 ms 的静止反馈；重复使用同一记录会报错。把实测半径和轮距填入上位机差速控制器的 `wheel_radius` 和 `wheel_separation`。速度范围、持续时间和停距按所用地面与载荷单独记录。[复算工具](../scripts/ground_geometry.py)
 
 ### 可选的地面尺量
 
-每趟由上位机限时启停。以 1.6 s、四轮各 +0.5 rad/s 为例，运行 `python docs/measurements/ground_trial.py <baize-monitor路径> COM17 <本趟新目录> 1600 .5 .5 .5 .5`。程序在本机提示起步、准备停车和停稳读尺，保留轮状态、IMU、停机后的轮记录及板端时间。按现场已通过的档位设置速度。量取同一车身固定点，记录地面材质、前进方向和尺的最小刻度。[单趟记录工具](measurements/ground_trial.py)
+每趟由上位机限时启停。以 1.6 s、四轮各 +0.5 rad/s 为例，运行 `python scripts/ground_trial.py <baize-monitor路径> COM17 <本趟新目录> 1600 .5 .5 .5 .5`。程序在本机提示起步、准备停车和停稳读尺，保留轮状态、IMU、停机后的轮记录及板端时间。按现场已通过的档位设置速度。量取同一车身固定点，记录地面材质、前进方向和尺的最小刻度。[单趟记录工具](../scripts/ground_trial.py)
 
 - **直行和停距。** 前后两次静止位置的差给出总行程。做停距试验时，在“准备停车”提示时看清已经越过的最近一条地面刻线。车辆沿该方向停稳后，刻线至车身基准点的余程给出本趟停车距离的保守上界，含提示提前量与读尺分辨率。记录初速度及余程。只看到起终点的行程用于直行标定。出现倒滚时另作记录。
-- **用长度测转角。** 车身静止时，用前、后两个固定点的地面投影画出沿车头的箭头。转过约四分之一圈后，再画一次。延长两条直线至相交，从交点沿两次车头方向各量同一长度 `R`，再量两个端点之间的距离 `D`。运行 `python docs/measurements/ground_geometry.py --turn-angle left 20 28.28` 得到约 +90°。右转填 `right`，两段长度使用同一单位。转向中心平移仍可用两条方向线求角。先用一组前、后、左、右行程定参数和容差，再用另外四趟复核。
+- **用长度测转角。** 车身静止时，用前、后两个固定点的地面投影画出沿车头的箭头。转过约四分之一圈后，再画一次。延长两条直线至相交，从交点沿两次车头方向各量同一长度 `R`，再量两个端点之间的距离 `D`。运行 `python scripts/ground_geometry.py --turn-angle left 20 28.28` 得到约 +90°。右转填 `right`，两段长度使用同一单位。转向中心平移仍可用两条方向线求角。先用一组前、后、左、右行程定参数和容差，再用另外四趟复核。
 
 ### IMU 与电压
 
-在未使能时，依次使车身前端、后端、左侧、右侧、顶面、底面朝上。每次摆稳后用监视工具采至少 100 条六轴样本，依次命名为 `x-up.csv`、`x-down.csv`、`y-up.csv`、`y-down.csv`、`z-up.csv`、`z-down.csv`。重新摆平单独录 `check-z-up.csv`。运行 `python docs/measurements/imu_calibration.py <目录>`，输出传感器坐标中的偏置、各轴尺度、传感器到车身的旋转矩阵及独立水平姿态的重力模长和倾角。换算顺序为减偏置、加速度逐轴乘尺度、再乘旋转矩阵。陀螺减静止零偏后乘同一矩阵。用现场实际左转的记录复核车身 z 轴角速度为正。模块相对车身原点的位置可另用尺量。[标定计算](measurements/imu_calibration.py)
+在未使能时，依次使车身前端、后端、左侧、右侧、顶面、底面朝上。每次摆稳后用监视工具采至少 100 条六轴样本，依次命名为 `x-up.csv`、`x-down.csv`、`y-up.csv`、`y-down.csv`、`z-up.csv`、`z-down.csv`。重新摆平单独录 `check-z-up.csv`。运行 `python scripts/imu_calibration.py <目录>`，输出传感器坐标中的偏置、各轴尺度、传感器到车身的旋转矩阵及独立水平姿态的重力模长和倾角。换算顺序为减偏置、加速度逐轴乘尺度、再乘旋转矩阵。陀螺减静止零偏后乘同一矩阵。用现场实际左转的记录复核车身 z 轴角速度为正。模块相对车身原点的位置可另用尺量。[标定计算](../scripts/imu_calibration.py)
 
 电源遥测验收有效读数和随工况变化，输入端电压的绝对精度记为待独立校准。

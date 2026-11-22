@@ -28,12 +28,12 @@ POSES = {"车顶朝上": "z-up", "车底朝上": "z-down", "车头朝上": "x-up
 
 
 class Status(C.Structure):
-    _fields_ = [("ms", C.c_uint32), ("state", C.c_uint8), ("reason", C.c_uint8), ("mv", C.c_uint16),
-                ("angle", C.c_int64*4), ("speed", C.c_int32*4)]
+    _fields_ = [("ms", C.c_uint32), ("valid", C.c_bool), ("state", C.c_uint8), ("reason", C.c_uint8),
+                ("volts", C.c_double), ("angle", C.c_double*4), ("speed", C.c_double*4)]
 
 
 class Imu(C.Structure):
-    _fields_ = [("ms", C.c_uint32), ("accel", C.c_int32*3), ("gyro", C.c_int32*3)]
+    _fields_ = [("ms", C.c_uint32), ("valid", C.c_bool), ("accel", C.c_double*3), ("gyro", C.c_double*3)]
 
 
 class Payload(C.Union):
@@ -48,16 +48,17 @@ def library(path=None):
     local = Path(__file__).resolve().parent
     name = "baize_panel_io" + (".dll" if os.name == "nt" else ".dylib" if sys.platform == "darwin" else ".so")
     build = local.parents[1]/"build"
-    places = [local, build/"host", build/"desktop/host", build/"linux-host", build/"linux-tests/host"]
+    places = [local, build/"native/tools", build/"native-linux/tools", build/"tools", build/"host", build/"desktop/host",
+              build/"linux-host", build/"linux-tests/host"]
     paths = [Path(path)] if path else [d/sub/name for d in places for sub in ("", "Release", "Debug")]
     found = next((p for p in paths if p.is_file()), None)
     if found is None:
-        raise OSError("请先从仓库根目录构建 host 的 baize_panel_io 目标。")
+        raise OSError("请从仓库根目录构建 baize_panel_io 目标，或指定本机构建的库路径。")
     lib = C.CDLL(str(found.resolve()))
     link = C.c_void_p
     for name, result, args in (
         ("panel_frame_size", C.c_size_t, []), ("panel_open", link, [C.c_char_p]),
-        ("panel_start", C.c_int, [link, C.c_uint32, C.POINTER(C.c_int32)]),
+        ("panel_start", C.c_int, [link, C.c_uint32, C.POINTER(C.c_double)]),
         ("panel_stop", None, [link]), ("panel_close", None, [link]),
         ("panel_poll", C.c_int, [link, C.POINTER(Frame), C.POINTER(C.c_int)])):
         fn = getattr(lib, name)
@@ -211,9 +212,8 @@ class Session(threading.Thread):
         self.rows = []
 
     def wheel_frame(self, raw, host, writer):
-        volts = None if raw.mv == 65535 else raw.mv/1000
-        row = Wheel(host, raw.ms, raw.state, raw.reason, volts, tuple(v/1000 for v in raw.angle),
-                    tuple(v/1000 for v in raw.speed))
+        volts = raw.volts if math.isfinite(raw.volts) else None
+        row = Wheel(host, raw.ms, raw.state, raw.reason, volts, tuple(raw.angle), tuple(raw.speed))
         key = self.trial["id"] if self.trial else ""
         writer.writerow([host, raw.ms, raw.state, raw.reason, volts, *row.angle, *row.speed, key])
         with self.lock:
@@ -237,8 +237,8 @@ class Session(threading.Thread):
         if not all(math.isfinite(v) and abs(v) <= 2 for v in targets):
             self.events.put(("notice", "每轮目标须在 ±2 rad/s 内。"))
             return
-        values = [round(v*1000) for v in targets]
-        accepted = self.lib.panel_start(link, duration, (C.c_int32*4)(*values))
+        targets = [round(v*1000)/1000 for v in targets]
+        accepted = self.lib.panel_start(link, duration, (C.c_double*4)(*targets))
         if accepted < 0:
             raise OSError("下发使能时串口写入失败。")
         if not accepted:
@@ -248,7 +248,7 @@ class Session(threading.Thread):
         self.trial = dict(id=f"trial-{self.sequence:03d}", label=label, port=self.port,
                           time=datetime.now().astimezone().isoformat(timespec="seconds"),
                           start_host_ms=self.elapsed(), start_board_ms=self.wheel.board, duration_ms=duration,
-                          target_rad_s=[v/1000 for v in values], outcome="running")
+                          target_rad_s=list(targets), outcome="running")
         self.rows, self.quiet = [self.wheel], None
         save_json(self.folder/(self.trial["id"]+".json"), self.trial)
         self.events.put(("notice", f"{label} · 正在点动"))
@@ -348,7 +348,7 @@ class Session(threading.Thread):
                     self.wheel_frame(frame.data.status, host, wheels)
                 else:
                     raw = frame.data.imu
-                    self.imu = (host, raw.ms, tuple(v/1000 for v in raw.accel), tuple(v/1000 for v in raw.gyro))
+                    self.imu = (host, raw.ms, tuple(raw.accel), tuple(raw.gyro))
                     row = (host, raw.ms, *self.imu[2], *self.imu[3], self.trial["id"] if self.trial else "")
                     imu.writerow(row)
                     if self.pose:

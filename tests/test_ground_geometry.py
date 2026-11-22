@@ -6,7 +6,7 @@ import subprocess
 import sys
 import tempfile
 
-SCRIPT = Path(__file__).resolve().parents[1] / "docs/measurements/ground_geometry.py"
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts/ground_geometry.py"
 WHEELS = ("fl", "fr", "rl", "rr")
 
 

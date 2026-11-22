@@ -1,16 +1,15 @@
 cmake_minimum_required(VERSION 3.22)
-project(baize_desktop_tests LANGUAGES C)
-
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
-enable_testing()
-
-add_subdirectory(../host host)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    project(baize_desktop_tests LANGUAGES C)
+    enable_testing()
+    add_subdirectory(../host host)
+    add_subdirectory(../examples/c example-c)
+    add_subdirectory(../examples/chassis example-cpp)
+endif()
 add_library(baize_logic STATIC
-    ../firmware/control/baize_drive.c
-    ../firmware/control/baize_encoders.c)
-target_include_directories(baize_logic PUBLIC ../firmware/control)
+    ../firmware/control/drive.c
+    ../firmware/control/encoders.c)
+target_include_directories(baize_logic PUBLIC ../firmware/control ../src/protocol ../src)
 target_link_libraries(baize_logic PUBLIC baize_host)
 if(NOT MSVC)
     target_link_libraries(baize_logic PUBLIC m)
@@ -21,6 +20,11 @@ foreach(area IN ITEMS protocol drive encoders session)
     target_link_libraries(test_${area} PRIVATE baize_logic)
     add_test(NAME ${area} COMMAND test_${area})
 endforeach()
+
+add_executable(test_chassis test_chassis.c)
+target_include_directories(test_chassis PRIVATE ../src ../src/protocol)
+target_link_libraries(test_chassis PRIVATE baize_host)
+add_test(NAME chassis COMMAND test_chassis)
 
 find_package(Python3 QUIET COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
@@ -37,6 +41,9 @@ if(Python3_Interpreter_FOUND)
         endif()
     endif()
     if(UNIX)
+        add_test(NAME chassis_examples COMMAND ${Python3_EXECUTABLE} -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_chassis_serial.py $<TARGET_FILE:chassis-c-example>
+            $<TARGET_FILE:chassis-example>)
         add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
         add_test(NAME timed_jog COMMAND ${Python3_EXECUTABLE} -B

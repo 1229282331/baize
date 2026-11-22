@@ -15,7 +15,10 @@ typedef struct {
     BaizeReceiver rx;
     BaizeHostPhase phase;
     uint32_t status_timeout_ms;
-    uint32_t last_status_ms; /* Host receive time of the last new wheel sample. */
+    union {
+        uint32_t last_wheel_rx_ms;
+        uint32_t last_status_ms; /* v1.0.0 field name, same storage. */
+    };
     uint32_t enable_sent_ms;
     uint32_t wheel_sample_ms, imu_sample_ms; /* Independent board timestamps. */
     uint8_t last_drive_state, last_stop_reason;

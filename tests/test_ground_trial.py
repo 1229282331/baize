@@ -13,7 +13,7 @@ import tty
 
 from test_monitor import imu, wire
 
-script = Path(__file__).resolve().parents[1] / "docs/measurements/ground_trial.py"
+script = Path(__file__).resolve().parents[1] / "scripts/ground_trial.py"
 with tempfile.TemporaryDirectory() as temp:
     folder = Path(temp)/"forward"
     master, slave = pty.openpty()

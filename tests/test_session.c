@@ -1,6 +1,7 @@
 #include "baize_session.h"
-#include "baize_drive.h"
+#include "drive.h"
 
+#undef NDEBUG
 #undef NDEBUG
 #include <assert.h>
 #include <string.h>
@@ -26,12 +27,12 @@ static bool wheel_sample(BaizeSession *host, uint32_t board_ms, uint32_t host_ms
     } }, host_ms);
 }
 
-static void status(BaizeSession *host, const BaizeDrive *drive, uint32_t now)
+static void status(BaizeSession *host, const Drive *drive, uint32_t now)
 {
     assert(wheel_sample(host, now, now, drive->state, drive->stop_reason));
 }
 
-static void deliver(BaizeDrive *drive, const BaizeFrame *command, uint32_t now)
+static void deliver(Drive *drive, const BaizeFrame *command, uint32_t now)
 {
     uint8_t wire[BAIZE_WIRE_MAX];
     size_t length = baize_encode(command, wire);
@@ -40,10 +41,10 @@ static void deliver(BaizeDrive *drive, const BaizeFrame *command, uint32_t now)
     for (size_t i = 0; i < length; ++i) {
         assert(baize_receive(&rx, BAIZE_TO_BASE, wire[i], &received) == (i + 1 == length));
     }
-    baize_drive_command(drive, &received, now);
+    drive_command(drive, &received, now);
 }
 
-static void handshake(BaizeSession *host, BaizeDrive *drive, uint32_t now)
+static void handshake(BaizeSession *host, Drive *drive, uint32_t now)
 {
     BaizeFrame command;
     assert(!baize_session_enable(host, now, &command));
@@ -58,12 +59,12 @@ static void handshake(BaizeSession *host, BaizeDrive *drive, uint32_t now)
 
 static void reconnect(void)
 {
-    BaizeDrive drive;
+    Drive drive;
     BaizeSession host;
     BaizeFrame command, feedback;
     const int32_t old_target[] = {800, 400, 200, -300};
     const int32_t new_target[] = {10, 20, 30, 40};
-    baize_drive_init(&drive, 2000, 100);
+    drive_init(&drive, 2000, 100);
     baize_session_open(&host, 60);
     status(&host, &drive, 0); /* Feedback before the first STOP is ineligible. */
     assert(!baize_session_target(&host, old_target));
@@ -96,11 +97,11 @@ static void reconnect(void)
 
 static void lost_feedback(void)
 {
-    BaizeDrive drive;
+    Drive drive;
     BaizeSession host;
     BaizeFrame command, ignored;
     const int32_t target[] = {10, 20, 30, 40};
-    baize_drive_init(&drive, 2000, 100);
+    drive_init(&drive, 2000, 100);
     baize_session_open(&host, 60);
     handshake(&host, &drive, UINT32_MAX - 30);
     assert(baize_session_target(&host, target));
@@ -118,7 +119,7 @@ static void lost_feedback(void)
     assert(baize_session_target(&host, target));
     status(&host, &drive, 100); /* A late status arrives before the sender polls. */
     assert(baize_session_next(&host, 101, &command) && command.type == BAIZE_STOP);
-    baize_drive_fault(&drive);
+    drive_fault(&drive);
     status(&host, &drive, 102);
     assert(!baize_session_enable(&host, 103, &command));
     assert(baize_session_next(&host, 103, &command) && command.type == BAIZE_STOP);
@@ -126,11 +127,11 @@ static void lost_feedback(void)
 
 static void lost_enable_and_stop(void)
 {
-    BaizeDrive drive;
+    Drive drive;
     BaizeSession host;
     BaizeFrame command;
     const int32_t target[] = {10, 20, 30, 40};
-    baize_drive_init(&drive, 2000, 100);
+    drive_init(&drive, 2000, 100);
     baize_session_open(&host, 60);
     assert(baize_session_next(&host, 0, &command) && command.type == BAIZE_STOP);
     deliver(&drive, &command, 0);

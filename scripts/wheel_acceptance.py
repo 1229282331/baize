@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from queue import Empty
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "host/panel"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools/panel"))
 from panel_session import READY, WHEELS, Session, Wheel, library, save_json, summarize
 
 

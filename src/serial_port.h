@@ -17,6 +17,7 @@ extern "C" {
 #endif
 
 SerialPort serial_open(const char *name);
+int serial_available(SerialPort port);
 int serial_read(SerialPort port, uint8_t *data, size_t size);
 bool serial_write(SerialPort port, const uint8_t *data, size_t size);
 bool serial_write_frame(SerialPort port, const BaizeFrame *frame);

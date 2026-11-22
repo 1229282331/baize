@@ -16,7 +16,7 @@ void baize_session_stop(BaizeSession *session)
 static void check_timeout(BaizeSession *session, uint32_t now_ms)
 {
     if (session->phase == BAIZE_SEND_STOP || session->phase == BAIZE_WAIT_DISABLED) return;
-    bool stale = now_ms - session->last_status_ms >= session->status_timeout_ms;
+    bool stale = now_ms - session->last_wheel_rx_ms >= session->status_timeout_ms;
     bool enable_timed_out = session->phase == BAIZE_WAIT_ENABLED &&
                             now_ms - session->enable_sent_ms >= session->status_timeout_ms;
     if (stale || enable_timed_out) baize_session_stop(session);
@@ -50,7 +50,7 @@ bool baize_session_receive(BaizeSession *session, uint8_t byte, uint32_t now_ms,
     session->wheel_sample_ms = status->sample_ms;
     session->last_drive_state = status->drive_state;
     session->last_stop_reason = status->stop_reason;
-    session->last_status_ms = now_ms;
+    session->last_wheel_rx_ms = now_ms;
     switch (status->drive_state) {
     case BAIZE_DISABLED:
         if (session->phase == BAIZE_WAIT_DISABLED) {

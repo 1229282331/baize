@@ -1,5 +1,5 @@
 #include "base_motion.h"
-#include "baize_drive.h"
+#include "drive.h"
 #include "main.h"
 
 #include <string.h>
@@ -13,15 +13,15 @@ static const uint16_t dir_pins[] = {FL_DIR_Pin, FR_DIR_Pin, RL_DIR_Pin, RR_DIR_P
 static const bool forward_high[] = {true, false, true, false};
 /* Wheels-raised calibration, in protocol order: FL, FR, RL, RR. */
 static const float friction_pwm[BAIZE_WHEELS] = {125.0f, 125.0f, 125.0f, 90.0f};
-static BaizeDrive drive;
-static BaizeWheelPi wheels[BAIZE_WHEELS];
+static Drive drive;
+static WheelPi wheels[BAIZE_WHEELS];
 static int16_t last_effort[BAIZE_WHEELS];
 
 void base_motion_start(void)
 {
-    baize_drive_init(&drive, SPEED_LIMIT_MRAD_S, COMMAND_TIMEOUT_MS);
+    drive_init(&drive, SPEED_LIMIT_MRAD_S, COMMAND_TIMEOUT_MS);
     for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
-        wheels[i] = (BaizeWheelPi){.kp = 0.28f, .ki = 4.0f, .ks = friction_pwm[i], .kv = 0.18f};
+        wheels[i] = (WheelPi){.kp = 0.28f, .ki = 4.0f, .ks = friction_pwm[i], .kv = 0.18f};
         __HAL_TIM_SET_COMPARE(&htim8, channels[i], htim8.Init.Period + 1u);
     }
     /* Latch neutral and start all four channels before assigning the pins to TIM8. */
@@ -33,7 +33,7 @@ void base_motion_start(void)
 
 void base_motion_command(const BaizeFrame *command, uint32_t received_ms)
 {
-    baize_drive_command(&drive, command, received_ms);
+    drive_command(&drive, command, received_ms);
 }
 
 static void write_effort(size_t wheel, int16_t effort)
@@ -50,15 +50,15 @@ static void write_effort(size_t wheel, int16_t effort)
     last_effort[wheel] = effort;
 }
 
-void base_motion_update(const BaizeEncoders *encoders, uint32_t elapsed_ms,
+void base_motion_update(const Encoders *encoders, uint32_t elapsed_ms,
                         uint8_t *drive_state, uint8_t *stop_reason)
 {
     int32_t targets[BAIZE_WHEELS];
     /* A complete command arrives in the UART IRQ. Copy one coherent control input. */
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
-    baize_drive_tick(&drive, HAL_GetTick());
-    baize_drive_check_progress(&drive, encoders->angle_mrad, last_effort, encoders->sample_ms);
+    drive_tick(&drive, HAL_GetTick());
+    drive_check_progress(&drive, encoders->angle_mrad, last_effort, encoders->sample_ms);
     *drive_state = drive.state;
     *stop_reason = drive.stop_reason;
     bool reset = drive.reset_output;
@@ -74,8 +74,8 @@ void base_motion_update(const BaizeEncoders *encoders, uint32_t elapsed_ms,
         htim8.Instance->EGR = TIM_EGR_UG;
     } else if (*drive_state == BAIZE_ENABLED) {
         for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
-            int16_t effort = baize_wheel_effort(&wheels[i], targets[i], encoders->velocity_mrad_s[i],
-                                                elapsed_ms, PWM_LIMIT);
+            int16_t effort = wheel_pi_step(&wheels[i], targets[i], encoders->velocity_mrad_s[i],
+                                           elapsed_ms, PWM_LIMIT);
             write_effort(i, effort);
         }
     }

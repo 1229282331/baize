@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 
-script = Path(__file__).resolve().parents[1] / "docs/measurements/imu_calibration.py"
+script = Path(__file__).resolve().parents[1] / "scripts/imu_calibration.py"
 g = 9.80665
 c, s = math.cos(.35), math.sin(.35)
 body_axes_in_sensor = ((0, c, s), (-1, 0, 0), (0, -s, c))

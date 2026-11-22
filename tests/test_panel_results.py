@@ -6,9 +6,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "host/panel"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools/panel"))
 from panel_session import IMU_HEADER, WHEEL_HEADER, Wheel, library, observation_result, summarize, target_values
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs/measurements"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from wheel_acceptance import replay
 
 

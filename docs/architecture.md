@@ -13,9 +13,9 @@
 
 差速控制器支持同侧多个车轮，输入车体速度，输出轮关节速度，可用关节位置反馈计算里程计。Husarion Panther 的四驱实车按左右两组配置四个关节，并单独校正有效轮距。这是本项目选择轮端接口的依据。[ROS 2 差速控制器](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html) · [Panther 四轮配置](https://github.com/husarion/husarion_ugv_ros/blob/ros2/husarion_ugv_controller/config/WH01_controller.yaml)
 
-## 下一版源码布局与命名
+## 源码布局与命名
 
-2026-11-22 设计。根目录面向集成底盘的应用开发者，桌面 CMake 工程构建主机库及工具。STM32 在 `firmware/` 使用自己的 Arm 工具链。下表是目标布局，v1.0.0 的构建和调用入口见[已发布的主机库说明](base-interface.md#上位机-c-库)。
+根目录面向集成底盘的应用开发者，桌面 CMake 工程构建主机库及工具。STM32 在 `firmware/` 使用自己的 Arm 工具链。v1.0.0 应用的原始构建入口见[兼容接口](base-interface.md#上位机-c-库)。
 
 | 路径 | 放置内容 |
 | --- | --- |
@@ -29,8 +29,8 @@
 这种布局沿用 realtimeSE 和 openrenderer 的阅读顺序，先看公开头，再按需进入实现。Franka 的硬件库使用 `include/franka/`、`src/` 和单独的示例，RealSense 的 C++ 接口复用 C 接口。白泽采用同一份底盘通信实现供两种语言调用。[realtimeSE](https://github.com/1229282331/realtimeSE) · [openrenderer](https://github.com/1229282331/openrenderer) · [libfranka](https://github.com/frankarobotics/libfranka) · [RealSense 对外头文件](https://github.com/realsenseai/librealsense/blob/master/include/readme.md)
 
 - C++ 用 `baize` 作为命名空间。类型用大驼峰，按实物或数据命名，如 `Chassis`、`WheelSpeeds`、`ImuSample`。方法、变量和自有源文件用小写下划线。只有对外的 C 符号使用 `baize_` 前缀。
-- 对象名交代职责，方法名写动作，如 `chassis.read(state)`、`chassis.write(wheels)`。v1.0.0 的 `BaizeSession` 负责启停握手、待发目标和反馈超时，新接口把它们收在底盘实现内部。[现有会话实现](../host/baize_session.c) · [openrenderer 的 Pipeline](https://github.com/1229282331/openrenderer/blob/master/include/pipeline.hpp) · [Franka 设备对象](https://frankarobotics.github.io/docs/doc/libfranka/docs/overview.html)
-- 物理量按需要标明单位，如 `angle_rad`、`yaw_rate_rad_s`。时间名写明事件，如 `wheel_sample_ms` 表示板上采样时刻，`last_wheel_rx_ms` 表示主机最近收到新轮状态的时刻。[下一版主机接口](base-interface.md#下一版主机库设计)
+- 对象名交代职责，方法名写动作，如 `chassis.read(state)`、`chassis.write(wheels)`。v1.0.0 的 `BaizeSession` 负责启停握手、待发目标和反馈超时，新接口把它们收在底盘实现内部。[现有会话实现](../src/baize_session.c) · [openrenderer 的 Pipeline](https://github.com/1229282331/openrenderer/blob/master/include/pipeline.hpp) · [Franka 设备对象](https://frankarobotics.github.io/docs/doc/libfranka/docs/overview.html)
+- 物理量按需要标明单位，如 `angle_rad`、`yaw_rate_rad_s`。时间名写明事件，如 `wheel_sample_ms` 表示板上采样时刻，`last_wheel_rx_ms` 表示主机最近收到新轮状态的时刻。[主机库读写接口](base-interface.md#主机库读写接口)
 
 ## 板级资源与实车核对
 
@@ -87,9 +87,9 @@ Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新
 
 上位机轮式里程计采用厂商程序的标称轮周长 0.496371 m、左右轮距 0.265 m。直行时，四轮的平均转数乘以轮周长即为估算行程。该周长折合轮径约 158.0 mm，随车图纸另标轮径约 152.4 mm，两者相差约 3.7%。滑移程度随地面和载荷变化。若某个应用有绝对定位精度指标，可在该工况下用独立的位置或转角参考校正上位机参数。[底盘尺寸，资料第 1 页](四轮灵风小车资料/四轮小车资料简介.pdf) · [原厂运动学参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/Kinematics_4WD.h)
 
-编码器沿用厂商默认值，输出轴每圈 144000 计数，M1～M4 的原始计数依次乘以 −1、−1、−1、+1 换算为前进为正的轮角。原始累计计数保留，轮角按累计值换算到最近的 mrad。四个定时器均采用双路编码器模式，两个输入的数字滤波值均为 15。架空单轮实测已核对四组电机与编码器的配对及反馈正负。操作者用面板核对了实物轮位和朝前方向。出现比例偏差时再独立复核每圈计数。[固件换算参数](../firmware/control/baize_encoders.c) · [厂商计数参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [厂商反馈符号](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [厂商编码器输入配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim4.c)
+编码器沿用厂商默认值，输出轴每圈 144000 计数，M1～M4 的原始计数依次乘以 −1、−1、−1、+1 换算为前进为正的轮角。原始累计计数保留，轮角按累计值换算到最近的 mrad。四个定时器均采用双路编码器模式，两个输入的数字滤波值均为 15。架空单轮实测已核对四组电机与编码器的配对及反馈正负。操作者用面板核对了实物轮位和朝前方向。出现比例偏差时再独立复核每圈计数。[固件换算参数](../firmware/control/encoders.c) · [厂商计数参数](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Inc/VelocityControl.h) · [厂商反馈符号](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c) · [厂商编码器输入配置](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/tim4.c)
 
-当前固件每 5 ms 更新一次**轮速 PI 加前馈**。目标轮速 `r` 非零时，先用 `Ks × sign(r) + Kv × r` 估计该方向和速度所需的 PWM，再用编码器误差 `e = r − 实测轮速` 修正。比例项为 `Kp × e`，积分按实际秒数累加 `Ki × e × Δt`。三项相加后限幅并取整。总输出饱和时暂停会加深饱和的积分更新。零目标或停机会清积分并将输出归中。微分增益为零。轮速单位为 mrad/s，输出单位为 PWM 计数。[板端控制函数](../firmware/control/baize_drive.c) · [四路参数](../firmware/Core/Src/base_motion.c) · [WPILib 电机前馈原理](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/controllers/feedforward.html)
+当前固件每 5 ms 更新一次**轮速 PI 加前馈**。目标轮速 `r` 非零时，先用 `Ks × sign(r) + Kv × r` 估计该方向和速度所需的 PWM，再用编码器误差 `e = r − 实测轮速` 修正。比例项为 `Kp × e`，积分按实际秒数累加 `Ki × e × Δt`。三项相加后限幅并取整。总输出饱和时暂停会加深饱和的积分更新。零目标或停机会清积分并将输出归中。微分增益为零。轮速单位为 mrad/s，输出单位为 PWM 计数。[板端控制函数](../firmware/control/drive.c) · [四路参数](../firmware/Core/Src/base_motion.c) · [WPILib 电机前馈原理](https://docs.wpilib.org/en/stable/docs/software/advanced-controls/controllers/feedforward.html)
 
 架空标定值为四轮共用 `Kp=0.28`、`Ki=4.0`、`Kv=0.18`。按左前、右前、左后、右后顺序，`Ks` 分别为 125、125、125、90 计数。右后通道维持相同低速所需的输出较小。板端接受每轮 ±2000 mrad/s，命令时限 150 ms，PWM 上限为 ±700/2000（35%）。原版 PI 的起始增益取自厂商常速档换算，`Kp=0.067265`、`Ki=3.2392`。两版均已用同一辆车测量，带载参数需在相应工况复核。[架空调参与复验](bringup-and-acceptance.md#四轮架空调参复验) · [厂商调速实现](四轮灵风小车资料/DoubleQ_FourRoundsCar_AllCode/Src/VelocityControl.c)
 
