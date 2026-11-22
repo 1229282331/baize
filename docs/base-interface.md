@@ -13,9 +13,9 @@
 | 2 | 左后 | `rear_left_wheel_joint` | 左侧 |
 | 3 | 右后 | `rear_right_wheel_joint` | 右侧 |
 
-主机接口使用 `rad` 和 `rad/s`。未来的 `SystemInterface` 为每个关节提供一个 `velocity` 命令接口和 `position`、`velocity` 两个状态接口。差速控制器用累计转角计算里程计。同一次连接中漏收单帧时，可以用下一帧的累计角度补上这段位移。建立新连接或识别到板端复位时，先建立新的角度基准，再累加后续差值。[ROS 2 差速控制器接口](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html)
+ROS 2 轮关节使用 `rad` 和 `rad/s`。未来的 `SystemInterface` 为每个关节提供一个 `velocity` 命令接口和 `position`、`velocity` 两个状态接口。差速控制器用累计转角计算里程计。同一次连接中漏收单帧时，可以用下一帧的累计角度补上这段位移。建立新连接或识别到板端复位时，先建立新的角度基准，再累加后续差值。[ROS 2 差速控制器接口](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html)
 
-插件的 `write()` 提交最新的四轮目标，`read()` 提取最近一帧有效反馈，将线路上的 mrad 和 mrad/s 分别除以 1000 后交给 ROS 2。串口等待不占用控制器更新周期，反馈过期时上报通信异常。
+插件的 `write()` 将四个关节目标交给主机库，`read()` 将库提供的最新有效轮状态填入关节接口。主机库负责将线路上的 mrad 和 mrad/s 换算为 rad 和 rad/s。插件在控制器更新周期内读取已有反馈，轮反馈过期时上报通信异常。[下一版主机库设计](#下一版主机库设计)
 
 本车轮式里程计的初始参数取厂商标称轮周长 0.496371 m（轮半径约 0.0790 m）和左右轮距 0.265 m。一次直行的估计距离等于四轮平均转角增量乘以标称轮半径。[几何参数来源](architecture.md#标定与验收依据)
 
@@ -44,6 +44,21 @@ target_link_libraries(controller PRIVATE baize_host)
 | 停机和退出 | `baize_session_stop` 丢弃待发目标，随即用 `baize_session_next` 取出并发送停机帧。继续处理收发，直至会话进入 `BAIZE_READY` 或等待超时。串口读写失败时向调用者报告并关闭串口，重开后重新握手。 |
 
 轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并重新请求停机。上层据此重建角度和时钟基准。相同轮时间、状态和原因的重复帧不会刷新反馈计时。IMU 用独立的采样时间去重。[会话接口](../host/baize_session.h) · [串口接口](../host/serial_port.h) · [联调工具调用示例](../host/monitor.c)
+
+## 下一版主机库设计
+
+2026-11-22 确认，待实现。C++ 程序通过 `<baize/chassis.hpp>` 使用 `baize::Chassis`。纯 C 程序通过 `<baize/chassis.h>` 调用同一份实现。普通应用、控制面板和未来的 ROS 2 硬件插件都链接 `baize_host`，由库处理串口收发、启停握手和线路单位换算。当前 v1.0.0 的调用方法见[上位机 C 库](#上位机-c-库)。
+
+| 周期操作 | 调用约定 |
+| --- | --- |
+| `chassis.read(state)` | 读取最近的四轮累计角度（rad）和角速度（rad/s）、电源电压（V）、驱动状态、停机原因，以及可选的六轴数据（m/s²、rad/s）。轮状态和 IMU 各有采样时间与有效性，一次读取可以取得不同时间的两组测量。 |
+| `chassis.write(wheels)` | `WheelSpeeds` 一次给定左前、右前、左后、右后四个带符号的目标角速度（rad/s）。持续运动由调用者周期提交，建议间隔 20 ms。写入成功说明主机已提交目标帧，实际响应由轮反馈确认。 |
+
+连接和驱动使能分别管理。打开或重连时先取得停机回执，显式使能后才能给速。持续写入零目标时驱动保持使能。停用时发 STOP 并确认撤销使能。停止续发后由板端按 150 ms 指令时限停机。轮反馈过期时主机丢弃待发目标并请求停机，IMU 缺样单独报告。
+
+独立函数 `baize::to_wheel_speeds(geometry, forward_m_s, yaw_rate_rad_s)` 只做差速换算。普通程序把前进速度 `v`（m/s，向前为正）和转向角速度 `ω`（rad/s，向左为正）换成四轮目标，再调用同一个 `write`。若调用者已持有轮关节目标，如未来的 `ros2_control` 插件，可直接写入。设轮半径为 `r`、左右轮距为 `b`，则左侧两轮角速度为 `(v − ωb/2)/r`，右侧两轮为 `(v + ωb/2)/r`。按本车标称几何，给定 0.079 m/s 直行时四轮目标均约为 +1 rad/s。[本车几何参数](architecture.md#标定与验收依据) · [WPILib 差速运动学](https://docs.wpilib.org/en/stable/docs/software/kinematics-and-odometry/differential-drive-kinematics.html) · [SFU libcreate 的整车与轮速调用](https://github.com/AutonomyLab/libcreate/blob/master/src/create.cpp#L435)
+
+接入验收覆盖 Windows 和 Linux。仓库外的 C 与 C++ 示例各自只包含公开头，用同一组直行和左转输入核对轮序、符号、单位，并验证启停和重连。另用 v1.0.0 的原有 C++ 示例及协议测试向量检查兼容性。[源码布局与命名](architecture.md#下一版源码布局与命名)
 
 ## 启停与异常行为
 

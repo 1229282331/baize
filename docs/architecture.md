@@ -13,6 +13,25 @@
 
 差速控制器支持同侧多个车轮，输入车体速度，输出轮关节速度，可用关节位置反馈计算里程计。Husarion Panther 的四驱实车按左右两组配置四个关节，并单独校正有效轮距。这是本项目选择轮端接口的依据。[ROS 2 差速控制器](https://control.ros.org/jazzy/doc/ros2_controllers/diff_drive_controller/doc/userdoc.html) · [Panther 四轮配置](https://github.com/husarion/husarion_ugv_ros/blob/ros2/husarion_ugv_controller/config/WH01_controller.yaml)
 
+## 下一版源码布局与命名
+
+2026-11-22 设计。根目录面向集成底盘的应用开发者，桌面 CMake 工程构建主机库及工具。STM32 在 `firmware/` 使用自己的 Arm 工具链。下表是目标布局，v1.0.0 的构建和调用入口见[已发布的主机库说明](base-interface.md#上位机-c-库)。
+
+| 路径 | 放置内容 |
+| --- | --- |
+| `include/baize/` | 应用需要的公开头文件。C++ 从 `chassis.hpp` 接入，C 从 `chassis.h` 接入。 |
+| `src/` | 主机库实现与私有头文件。共享的 v1 编解码放在 `src/protocol/`，由桌面与固件各自从同一份 C 源码编译。 |
+| `firmware/` | STM32CubeMX 工程、板级接线、传感器和轮控代码。CubeMX 的构建文件直接引用 `Drivers/` 内的一份 HAL 和 CMSIS。[固件构建定义](../firmware/cmake/stm32cubemx/CMakeLists.txt) |
+| `3rdparty/` | 根工程实际引入外部源码时建立，保存依赖和随附许可证。 |
+| `tools/`、`scripts/` | 命令行联调工具和控制面板放在 `tools/`。标定、验收数据复算脚本放在 `scripts/`。 |
+| `examples/`、`tests/`、`docs/` | 分别放独立接入示例、回归测试和项目文档。实测记录、历史交付包和厂商参考资料归档在 `docs/`。 |
+
+这种布局沿用 realtimeSE 和 openrenderer 的阅读顺序，先看公开头，再按需进入实现。Franka 的硬件库使用 `include/franka/`、`src/` 和单独的示例，RealSense 的 C++ 接口复用 C 接口。白泽采用同一份底盘通信实现供两种语言调用。[realtimeSE](https://github.com/1229282331/realtimeSE) · [openrenderer](https://github.com/1229282331/openrenderer) · [libfranka](https://github.com/frankarobotics/libfranka) · [RealSense 对外头文件](https://github.com/realsenseai/librealsense/blob/master/include/readme.md)
+
+- C++ 用 `baize` 作为命名空间。类型用大驼峰，按实物或数据命名，如 `Chassis`、`WheelSpeeds`、`ImuSample`。方法、变量和自有源文件用小写下划线。只有对外的 C 符号使用 `baize_` 前缀。
+- 对象名交代职责，方法名写动作，如 `chassis.read(state)`、`chassis.write(wheels)`。v1.0.0 的 `BaizeSession` 负责启停握手、待发目标和反馈超时，新接口把它们收在底盘实现内部。[现有会话实现](../host/baize_session.c) · [openrenderer 的 Pipeline](https://github.com/1229282331/openrenderer/blob/master/include/pipeline.hpp) · [Franka 设备对象](https://frankarobotics.github.io/docs/doc/libfranka/docs/overview.html)
+- 物理量按需要标明单位，如 `angle_rad`、`yaw_rate_rad_s`。时间名写明事件，如 `wheel_sample_ms` 表示板上采样时刻，`last_wheel_rx_ms` 表示主机最近收到新轮状态的时刻。[下一版主机接口](base-interface.md#下一版主机库设计)
+
 ## 板级资源与实车核对
 
 ### 四轮接线
