@@ -23,6 +23,7 @@ def trial(mode):
     incoming = bytearray()
     stop_ack = enabled = final_stop = False
     first_target = None
+    resume_at = None
     frozen_ms = None
     board_ms = 0
     count = 0
@@ -56,6 +57,14 @@ def trial(mode):
                         first_target = now
                     if mode == "interrupt" and count == 2:
                         proc.send_signal(signal.SIGINT)
+                    if mode == "paused" and count == 2:
+                        proc.send_signal(signal.SIGSTOP)
+                        resume_at = now + .55
+                    elif mode == "paused" and count > 2:
+                        raise AssertionError("resuming with buffered wheel frames renewed the old target")
+            if resume_at is not None and now >= resume_at:
+                proc.send_signal(signal.SIGCONT)
+                resume_at = None
             board_ms += 20
             if mode == "loss" and first_target is not None and not final_stop:
                 os.write(master, imu(board_ms))
@@ -72,6 +81,8 @@ def trial(mode):
         assert final_stop and count >= 2 and "host_elapsed_ms" in out, (final_stop, count, err)
         if mode == "normal":
             assert proc.returncode == 0 and 0.095 <= elapsed < 0.23, (proc.returncode, elapsed, err)
+        elif mode == "paused":
+            assert proc.returncode != 0 and .55 <= elapsed < 1.1, (proc.returncode, elapsed, err)
         else:
             assert proc.returncode != 0 and elapsed < 0.6, (proc.returncode, elapsed, err)
         print(f"{mode}: {count} targets, first target to STOP {elapsed * 1000:.0f} ms")
@@ -83,5 +94,5 @@ def trial(mode):
         os.close(slave)
 
 
-for mode in ("normal", "loss", "frozen", "reset", "interrupt"):
+for mode in ("normal", "loss", "frozen", "reset", "interrupt", "paused"):
     trial(mode)
