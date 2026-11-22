@@ -44,7 +44,7 @@ if(Python3_Interpreter_FOUND)
         add_test(NAME chassis_examples COMMAND ${Python3_EXECUTABLE} -B
             ${CMAKE_CURRENT_SOURCE_DIR}/test_chassis_serial.py $<TARGET_FILE:chassis-c-example>
             $<TARGET_FILE:chassis-example>)
-        add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
+        add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE} -B
             ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
         add_test(NAME timed_jog COMMAND ${Python3_EXECUTABLE} -B
             ${CMAKE_CURRENT_SOURCE_DIR}/test_jog.py $<TARGET_FILE:baize-monitor>)

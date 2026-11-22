@@ -11,3 +11,7 @@
 /build/
 /firmware/build/
 /firmware/.mxproject
+
+# Python 在脚本旁生成的字节码缓存
+__pycache__/
+*.pyc

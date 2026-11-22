@@ -145,11 +145,11 @@ python3 -B tools/panel/baize-panel.pyw --port /dev/ttyUSB0
 控制面板断开端口后，可在四轮架空、IMU 已连接时运行下列第一条命令。程序复用面板串口库，自动完成八组单轮正反转、四轮同速的 ±0.35 与 ±2 rad/s、四个独立目标、提前停机和重连。每个动作限时，某项未通过即停止并保留原始记录。输出目录须是新目录。
 
 ```powershell
-python -B scripts/wheel_acceptance.py run COM17 build/acceptance-01
-python -B scripts/wheel_acceptance.py replay build/acceptance-01/motion
+python -B scripts/wheel_acceptance.py run COM17 build/acceptance
+python -B scripts/wheel_acceptance.py replay build/acceptance/motion
 ```
 
-第二条命令只读磁盘，也适用于面板以前保存的会话。它从轮反馈 CSV 重算均速、转角、停机回执和停稳时间，逐项对照试次 JSON，并报告两路采样数量与最大接收间隔。空载地面行程、车身停距和安装变换使用各自的测量记录。[验收程序](../scripts/wheel_acceptance.py)
+第二条命令只读磁盘，也适用于面板以前保存的会话。它从轮反馈 CSV 重算均速、转角、停机回执和停稳时间，逐项对照试次 JSON，并报告两路采样数量与最大接收间隔。核对结果并归档需要留存的记录后，清理 `build/acceptance`，供下次试验复用。空载地面行程、车身停距和安装变换使用各自的测量记录。[验收程序](../scripts/wheel_acceptance.py)
 
 操作者已在车旁确认各轮及整车动作符合预期。在面板会话 `20261122-145904-195468` 的 20 次点动中，19 次正常到时，一次手动提前停机，20 次均有停机回执和编码器停稳记录。离线复算读取了 60,648 帧轮反馈和 60,547 帧 IMU。另一次架空自动复验完成 14 次点动，重新连接后连续收到 20 帧静止轮反馈。
 
