@@ -1,10 +1,15 @@
 """Check panel decisions independently of a display or serial hardware."""
+import csv
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "host/panel"))
-from panel_session import Wheel, library, observation_result, summarize, target_values
+from panel_session import IMU_HEADER, WHEEL_HEADER, Wheel, library, observation_result, summarize, target_values
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs/measurements"))
+from wheel_acceptance import replay
 
 
 def recording(speed=1., progress=True):
@@ -63,6 +68,28 @@ class PanelResults(unittest.TestCase):
         self.assertEqual(observation_result(target, "左前", ""), "不符")
         self.assertEqual(observation_result(target, "右前", "未看清"), "待核对")
         self.assertEqual(observation_result((1, 1, 1, 1), "多轮", "朝车头"), "已记录")
+
+    def test_replay_checks_raw_record_against_saved_judgment(self):
+        rows = recording()
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            with (folder/"wheels.csv").open("w", newline="") as f:
+                w = csv.writer(f)
+                w.writerow(WHEEL_HEADER)
+                for i, r in enumerate(rows):
+                    w.writerow([r.host, r.board, r.state, r.reason, r.volts, *r.angle, *r.speed,
+                                "trial-001" if i else ""])
+            with (folder/"imu.csv").open("w", newline="") as f:
+                csv.writer(f).writerow(IMU_HEADER)
+            saved = dict(id="trial-001", label="fl+", target_rad_s=[1., 0, 0, 0],
+                         start_board_ms=rows[0].board, **self.result(rows))
+            path = folder/"trial-001.json"
+            path.write_text(json.dumps(saved), encoding="utf-8")
+            self.assertEqual(replay(folder)["trials"][0]["assessment"], "反馈符合")
+            saved["mean_rad_s"][0] = 1.5
+            path.write_text(json.dumps(saved), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "mean_rad_s"):
+                replay(folder)
 
 
 if __name__ == "__main__":
