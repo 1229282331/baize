@@ -158,7 +158,7 @@ int main(void)
       if (baize_encoders_sample(&encoders, counter, now_ms))
       {
         uint8_t state, reason;
-        base_motion_update(encoders.velocity_mrad_s, elapsed_ms, &state, &reason);
+        base_motion_update(&encoders, elapsed_ms, &state, &reason);
         /* Refresh only after sampling the encoders and applying this wheel-control update. */
         HAL_IWDG_Refresh(&hiwdg);
         if (now_ms - last_status_ms >= 20u)

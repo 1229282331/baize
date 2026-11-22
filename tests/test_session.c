@@ -118,7 +118,7 @@ static void lost_feedback(void)
     assert(baize_session_target(&host, target));
     status(&host, &drive, 100); /* A late status arrives before the sender polls. */
     assert(baize_session_next(&host, 101, &command) && command.type == BAIZE_STOP);
-    baize_drive_fault(&drive, true);
+    baize_drive_fault(&drive);
     status(&host, &drive, 102);
     assert(!baize_session_enable(&host, 103, &command));
     assert(baize_session_next(&host, 103, &command) && command.type == BAIZE_STOP);

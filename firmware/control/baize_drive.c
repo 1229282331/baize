@@ -51,12 +51,33 @@ void baize_drive_command(BaizeDrive *drive, const BaizeFrame *frame, uint32_t no
     }
 }
 
-void baize_drive_fault(BaizeDrive *drive, bool active)
+void baize_drive_fault(BaizeDrive *drive)
 {
-    if (active) {
-        stop(drive, BAIZE_FAULT, BAIZE_DRIVE_FAULT);
-    } else if (drive->state == BAIZE_FAULT) {
-        drive->state = BAIZE_DISABLED;
+    stop(drive, BAIZE_FAULT, BAIZE_DRIVE_FAULT);
+}
+
+void baize_drive_check_progress(BaizeDrive *drive, const volatile int64_t angle_mrad[BAIZE_WHEELS],
+                                const int16_t applied_pwm[BAIZE_WHEELS], uint32_t now_ms)
+{
+    enum { MIN_PWM = 250, PROGRESS_MRAD = 2, STALL_MS = 350 };
+    if (drive->reset_output) memset(drive->progress, 0, sizeof drive->progress);
+    if (drive->state != BAIZE_ENABLED || drive->reset_output) return;
+
+    for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
+        BaizeWheelProgress *p = &drive->progress[i];
+        int8_t direction = 0;
+        if (drive->target_mrad_s[i] > 0 && applied_pwm[i] >= MIN_PWM) direction = 1;
+        if (drive->target_mrad_s[i] < 0 && applied_pwm[i] <= -MIN_PWM) direction = -1;
+        int64_t angle = angle_mrad[i];
+        if (direction == 0 || direction != p->direction ||
+            direction * (angle - p->mark_mrad) >= PROGRESS_MRAD) {
+            p->direction = direction;
+            p->mark_mrad = angle;
+            p->since_ms = now_ms;
+        } else if (now_ms - p->since_ms >= STALL_MS) {
+            baize_drive_fault(drive);
+            return;
+        }
     }
 }
 

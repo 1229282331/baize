@@ -50,7 +50,7 @@ static void write_effort(size_t wheel, int16_t effort)
     last_effort[wheel] = effort;
 }
 
-void base_motion_update(const int32_t velocity_mrad_s[BAIZE_WHEELS], uint32_t elapsed_ms,
+void base_motion_update(const BaizeEncoders *encoders, uint32_t elapsed_ms,
                         uint8_t *drive_state, uint8_t *stop_reason)
 {
     int32_t targets[BAIZE_WHEELS];
@@ -58,6 +58,7 @@ void base_motion_update(const int32_t velocity_mrad_s[BAIZE_WHEELS], uint32_t el
     uint32_t mask = __get_PRIMASK();
     __disable_irq();
     baize_drive_tick(&drive, HAL_GetTick());
+    baize_drive_check_progress(&drive, encoders->angle_mrad, last_effort, encoders->sample_ms);
     *drive_state = drive.state;
     *stop_reason = drive.stop_reason;
     bool reset = drive.reset_output;
@@ -73,7 +74,8 @@ void base_motion_update(const int32_t velocity_mrad_s[BAIZE_WHEELS], uint32_t el
         htim8.Instance->EGR = TIM_EGR_UG;
     } else if (*drive_state == BAIZE_ENABLED) {
         for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
-            int16_t effort = baize_wheel_effort(&wheels[i], targets[i], velocity_mrad_s[i], elapsed_ms, PWM_LIMIT);
+            int16_t effort = baize_wheel_effort(&wheels[i], targets[i], encoders->velocity_mrad_s[i],
+                                                elapsed_ms, PWM_LIMIT);
             write_effort(i, effort);
         }
     }

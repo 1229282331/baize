@@ -72,25 +72,63 @@ static void crc_and_clock_wrap(void)
     check_zero(&drive, BAIZE_DISABLED, BAIZE_TIMEOUT);
 }
 
-static void faults_and_reset(void)
+static void wheel_progress_and_latched_fault(void)
 {
     BaizeDrive drive;
+    int64_t angle[BAIZE_WHEELS] = {0};
+    int16_t pwm[BAIZE_WHEELS] = {249, -250, 0, -700};
+    uint32_t start = UINT32_MAX - 100;
     baize_drive_init(&drive, 2000, 100);
-    baize_drive_command(&drive, &enable, 0);
-    baize_drive_command(&drive, &target, 1);
-    baize_drive_fault(&drive, true);
-    baize_drive_command(&drive, &stop, 2);
-    baize_drive_command(&drive, &enable, 3);
-    baize_drive_command(&drive, &target, 4);
-    baize_drive_tick(&drive, 200);
+    baize_drive_command(&drive, &enable, start);
+    drive.reset_output = false;
+    for (unsigned dt = 0; dt <= 355; ++dt) {
+        if (dt % 20 == 0) baize_drive_command(&drive, &target, start + dt);
+        angle[1] = -(int64_t)dt; /* Honest progress on an independent wheel. */
+        angle[3] = dt <= 5 ? 0 : -2 + (int64_t)(dt % 2);
+        baize_drive_check_progress(&drive, angle, pwm, start + dt);
+        assert(drive.state == BAIZE_ENABLED);
+    }
+    baize_drive_check_progress(&drive, angle, pwm, start + 356);
     check_zero(&drive, BAIZE_FAULT, BAIZE_DRIVE_FAULT);
-    baize_drive_fault(&drive, false);
-    baize_drive_command(&drive, &target, 201);
-    check_zero(&drive, BAIZE_DISABLED, BAIZE_DRIVE_FAULT);
-    baize_drive_command(&drive, &enable, 205);
-    baize_drive_command(&drive, &target, 210);
+    assert(drive.reset_output);
+    baize_drive_command(&drive, &stop, start + 357);
+    baize_drive_command(&drive, &enable, start + 358);
+    baize_drive_command(&drive, &target, start + 359);
+    baize_drive_tick(&drive, start + 1000);
+    check_zero(&drive, BAIZE_FAULT, BAIZE_DRIVE_FAULT);
     baize_drive_init(&drive, 2000, 100);
+    baize_drive_command(&drive, &target, 0);
     check_zero(&drive, BAIZE_DISABLED, BAIZE_RESET);
+}
+
+static void progress_after_stop_and_reversal(void)
+{
+    BaizeDrive drive;
+    int64_t angle[BAIZE_WHEELS] = {0};
+    int16_t pwm[BAIZE_WHEELS] = {250, 0, 0, 0};
+    BaizeFrame demand = target;
+    baize_drive_init(&drive, 2000, 1000);
+    baize_drive_command(&drive, &enable, 0);
+    baize_drive_command(&drive, &demand, 1);
+    baize_drive_check_progress(&drive, angle, pwm, 1); /* Startup neutral. */
+    drive.reset_output = false;
+    baize_drive_check_progress(&drive, angle, pwm, 2);
+    baize_drive_command(&drive, &stop, 348);
+    baize_drive_command(&drive, &enable, 349);
+    baize_drive_command(&drive, &demand, 350);
+    baize_drive_check_progress(&drive, angle, pwm, 351);
+    drive.reset_output = false;
+    baize_drive_check_progress(&drive, angle, pwm, 352);
+    demand.target_mrad_s[0] = -500;
+    baize_drive_command(&drive, &demand, 650);
+    baize_drive_check_progress(&drive, angle, pwm, 651); /* Braking the old direction. */
+    pwm[0] = -250;
+    baize_drive_check_progress(&drive, angle, pwm, 652);
+    angle[0] = 50; /* Movement in the wrong direction cannot keep the drive alive. */
+    baize_drive_check_progress(&drive, angle, pwm, 1001);
+    assert(drive.state == BAIZE_ENABLED);
+    baize_drive_check_progress(&drive, angle, pwm, 1002);
+    check_zero(&drive, BAIZE_FAULT, BAIZE_DRIVE_FAULT);
 }
 
 static void pi_feedback_and_stop_latch(void)
@@ -134,7 +172,8 @@ int main(void)
 {
     enable_and_expire();
     crc_and_clock_wrap();
-    faults_and_reset();
+    wheel_progress_and_latched_fault();
+    progress_after_stop_and_reversal();
     pi_feedback_and_stop_latch();
     wheel_feedforward();
     return 0;
