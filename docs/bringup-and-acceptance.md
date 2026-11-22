@@ -79,6 +79,12 @@ ctest --test-dir build/native-linux --output-on-failure
 
 桌面状态机边界样例使用各自的速度上限和模拟时钟。实车编码器采用厂商默认配置，台架控制限幅和指令时限随对应固件记录。
 
+### RDK X5 车载上位机
+
+在 X5 上运行 `baize_host`，电脑通过 Wi-Fi 和 SSH 登录板子。随车 A–A 数据线一端插 X5 的 USB-A Host，另一端插底盘双层 USB 座的上层 CH340 数据口。底盘用原电源，X5 的 Type-C 供电口按官方规格使用 5 V / 5 A 稳压电源。车上运行可以拆掉 ST-LINK。先停机、关闭底盘电源，再拔下探针 USB 和四根 SWD 线。[X5 接口与供电](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/hardware_introduction/rdk_x5/) · [官方 SSH 登录说明](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/remote_login) · [底盘 USB 接线](architecture.md#电源采样与-usb)
+
+2026-11-22 在 RDK X5 V1.0（Ubuntu 22.04.5 LTS，AArch64）上通过 Wi-Fi SSH 原生编译了主机库、联调工具及 C/C++ 示例。13 项 CTest 全部通过，其中串口用例使用 Linux 伪终端。上板使用源码构建的 ARM64 工具，构建命令与上面的 Linux 步骤相同。
+
 ### 2026-11-22 上位机会话与实车数据回放
 
 - Windows 和 Linux 均从独立的 C++ 工程链接并运行 `baize_host`。桌面用例覆盖了初始停机回执丢失、待发目标遇到板端时钟倒退、已发使能后板端复位，以及 32 位板端时间自然回绕。Windows 四项、Linux 六项 CTest 通过。[主机接入](base-interface.md#上位机-c-库) · [会话测试](../tests/test_session.c)

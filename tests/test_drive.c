@@ -3,6 +3,8 @@
 #undef NDEBUG
 #undef NDEBUG
 #include <assert.h>
+#include <float.h>
+#include <math.h>
 #include <string.h>
 
 /* Bench-independent test inputs. */
@@ -164,7 +166,8 @@ static void wheel_feedforward(void)
     assert(wheel_pi_step(&pi, 200, 190, 10, 100) == 100);
     assert(pi.integral == 2.0f);
     assert(wheel_pi_step(&pi, 200, 210, 100, 100) == 100);
-    assert(pi.integral == 0.0f);
+    /* A fused multiply-add can retain the rounding error in 0.1 seconds. */
+    assert(fabsf(pi.integral) <= FLT_EPSILON);
     assert(wheel_pi_step(&pi, -100, 0, 10, 100) == -97);
     assert(wheel_pi_step(&pi, 0, -100, 10, 100) == 0 && pi.integral == 0.0f);
 }
