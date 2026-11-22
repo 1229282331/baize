@@ -20,6 +20,15 @@ def record(path, time, angles, state, encoding="utf-8"):
 
 
 def run(directory):
+    for direction, angle in (("left", 90), ("right", -90)):
+        result = subprocess.run([sys.executable, str(SCRIPT), "--turn-angle", direction, "20",
+                                 str(20*math.sqrt(2))], text=True, capture_output=True)
+        assert result.returncode == 0, result.stderr
+        assert math.isclose(float(result.stdout.strip()), angle, abs_tol=.0001)
+    for args in (("left", "0", "1"), ("right", "5", "11"), ("left", "nan", "1")):
+        assert subprocess.run([sys.executable, str(SCRIPT), "--turn-angle", *args],
+                              capture_output=True).returncode != 0
+
     manifest = directory / "runs.csv"
     radius, track = .05, .25
     names = ["fit-straight", "fit-turn", "check-straight", "check-turn"]

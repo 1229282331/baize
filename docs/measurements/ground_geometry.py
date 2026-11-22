@@ -91,8 +91,20 @@ def calibrate(manifest):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("manifest", type=Path)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("manifest", nargs="?", type=Path)
+    mode.add_argument("--turn-angle", nargs=3, metavar=("SIDE", "R", "D"),
+                      help="signed degrees from two forward rays, equal radius R and chord D (same units)")
+    args = parser.parse_args()
     try:
-        calibrate(parser.parse_args().manifest)
+        if args.turn_angle:
+            side, radius, chord = args.turn_angle
+            r, d = float(radius), float(chord)
+            if side not in ("left", "right") or not math.isfinite(r) or not math.isfinite(d) or not 0 < d <= 2*r:
+                raise ValueError("use left or right, finite R > 0 and 0 < D <= 2R")
+            degrees = math.degrees(2 * math.asin(d / (2*r)))
+            print(f"{degrees if side == 'left' else -degrees:.6f}")
+        else:
+            calibrate(args.manifest)
     except (OSError, KeyError, ValueError) as error:
         parser.exit(1, f"{error}\n")
