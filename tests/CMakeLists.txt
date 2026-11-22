@@ -28,6 +28,14 @@ if(Python3_Interpreter_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/test_ground_geometry.py)
     add_test(NAME imu_calibration COMMAND ${Python3_EXECUTABLE} -B
         ${CMAKE_CURRENT_SOURCE_DIR}/test_imu_calibration.py)
+    if(Python3_VERSION VERSION_GREATER_EQUAL "3.10")
+        add_test(NAME panel_results COMMAND ${Python3_EXECUTABLE} -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_panel_results.py $<TARGET_FILE:baize_panel_io>)
+        if(UNIX)
+            add_test(NAME panel_serial COMMAND ${Python3_EXECUTABLE} -B
+                ${CMAKE_CURRENT_SOURCE_DIR}/test_panel_serial.py $<TARGET_FILE:baize_panel_io>)
+        endif()
+    endif()
     if(UNIX)
         add_test(NAME monitor_mixed_stream COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/test_monitor.py $<TARGET_FILE:baize-monitor>)
