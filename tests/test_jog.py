@@ -24,6 +24,7 @@ def trial(mode):
     stop_ack = enabled = final_stop = False
     first_target = None
     resume_at = None
+    resumed = False
     frozen_ms = None
     board_ms = 0
     count = 0
@@ -60,11 +61,12 @@ def trial(mode):
                     if mode == "paused" and count == 2:
                         proc.send_signal(signal.SIGSTOP)
                         resume_at = now + .55
-                    elif mode == "paused" and count > 2:
+                    elif resumed:
                         raise AssertionError("resuming with buffered wheel frames renewed the old target")
             if resume_at is not None and now >= resume_at:
                 proc.send_signal(signal.SIGCONT)
                 resume_at = None
+                resumed = True
             board_ms += 20
             if mode == "loss" and first_target is not None and not final_stop:
                 os.write(master, imu(board_ms))
