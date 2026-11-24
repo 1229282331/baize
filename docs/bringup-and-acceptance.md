@@ -81,11 +81,15 @@ ctest --test-dir build/native-linux --output-on-failure
 
 ### RDK X5 车载上位机
 
-在 X5 上运行 `baize_host`，电脑通过 Wi-Fi 和 SSH 登录板子。随车 A–A 数据线一端插 X5 的 USB-A Host，另一端插底盘双层 USB 座的上层 CH340 数据口。底盘用原电源，X5 的 Type-C 供电口按官方规格使用 5 V / 5 A 稳压电源。车上运行可以拆掉 ST-LINK。先停机、关闭底盘电源，再拔下探针 USB 和四根 SWD 线。[X5 接口与供电](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/hardware_introduction/rdk_x5/) · [官方 SSH 登录说明](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/remote_login) · [底盘 USB 接线](architecture.md#电源采样与-usb)
+RDK X5 是本车的日常上位机。`baize_host` 在 X5 上运行，开发电脑经 Wi-Fi 和 SSH 登录 X5。随车 A–A 数据线一端插 X5 的 USB-A Host，另一端插底盘双层 USB 座的上层 CH340 数据口。日常运行可拔掉 ST-LINK，拆线前先停机并给底盘断电。[官方 SSH 登录说明](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/remote_login) · [底盘 USB 接线](architecture.md#电源采样与-usb)
+
+底盘和 X5 一起上电。底盘用原电源，X5 的 Type-C 供电口按官方规格使用 5 V / 5 A 稳压电源。整车关机时，先让底盘停稳，再在 X5 上执行 `sudo poweroff`，等 Linux 完成关机后再切断整车电源。[X5 接口与供电](https://developer.d-robotics.cc/rdk_x_doc/Quick_start/hardware_introduction/rdk_x5/)
 
 2026-11-22 在 RDK X5 V1.0（Ubuntu 22.04.5 LTS，AArch64）上通过 Wi-Fi SSH 原生编译了主机库、联调工具及 C/C++ 示例。13 项 CTest 全部通过，其中串口用例使用 Linux 伪终端。上板使用源码构建的 ARM64 工具，构建命令与上面的 Linux 步骤相同。
 
 同日通过 Wi-Fi 登录 X5，用提交 `5ebaf6d` 的 `baize-monitor` 打开板载 CH340（`1a86:7523`，`/dev/ttyUSB0`，115200 bit/s）。静置采到 100 帧轮状态和 100 帧 IMU，按 STM32 采样时间复算分别为 50.00 Hz 和 49.92 Hz。全部轮状态均为未使能、主动停机，四轮速度为零且累计转角不变。底盘供电读数为 12.307～12.351 V。记录包中 `summary.json` 的 `time` 取自 X5，当时它的 UTC 时钟比电脑快约 8 小时。[逐帧 CSV 与采集摘要](measurements/2026-11-22-rdk-x5-usb.zip)
+
+2026-11-24 北京时间 21:28，在已建立的 SSH 连接上做了 16 次 UTC 往返测量。最短往返为 7.85 ms，按该次收发中点估算，X5 比开发电脑快 10.16 ms，半个往返为 3.92 ms。X5 时区为 `Asia/Shanghai`，`ntp.service` 已设为开机启动，`ntpq` 确认已选中网络时间源。随后通过 `/dev/ttyUSB0` 采到轮状态和 IMU 各 100 帧，板端采样率分别为 50.00 Hz 和 49.92 Hz。四轮全程未使能，轮速均为零。首帧停机原因为复位，其余 99 帧为主动停机。底盘电压为 12.326～12.348 V。[时钟往返与逐帧记录](measurements/2026-11-24-rdk-x5-clock-usb.zip)
 
 ### 2026-11-22 上位机会话与实车数据回放
 
