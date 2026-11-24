@@ -97,7 +97,13 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  extern const uint32_t g_pfnVectors[];
+  SCB->VTOR = (uint32_t)g_pfnVectors;
+  __DSB();
+  __ISB();
+  SystemCoreClockUpdate();
+  __set_BASEPRI(0);
+  __enable_irq();
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/

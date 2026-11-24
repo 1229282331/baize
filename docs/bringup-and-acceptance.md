@@ -51,7 +51,7 @@ cube cmake --preset Debug
 cube cmake --build --preset Debug
 ```
 
-输出为 `firmware/build/Debug/baize_base.elf`。将两条构建命令的预设改为 `Release` 可生成优化版本。目标为 Cortex-M3 / Thumb-2。工程按图纸标注的 RCT6 链接，Flash 从 `0x08000000` 开始分配 256 KiB，SRAM 从 `0x20000000` 开始分配 48 KiB，初始栈顶为 `0x2000C000`。[链接脚本](../firmware/STM32F103xx_FLASH.ld)
+输出为 `firmware/build/Debug/baize_base.elf` 和 `chassis.bin`。将预设改为 `Release` 可生成优化版本。目标为 Cortex-M3 / Thumb-2。工程按 RCT6 的 256 KiB Flash、48 KiB SRAM 链接，初始栈顶为 `0x2000C000`。MCUboot 从 `0x08000000` 启动，应用向量位于 `0x08010200`。日常构建经 imgtool 打包后才能安装。[链接脚本](../firmware/STM32F103xx_FLASH.ld) · [生成串口包和首装镜像](firmware-update.md)
 
 修改外设时用经典 CubeMX 6.19.0 打开工程配置，使用 STM32CubeF1 1.8.7 重新生成。目前已配置 SWD、8 MHz 晶振倍频至 72 MHz、115200 的 USART2、四路编码器和 TIM8 输出、方向 GPIO、PA4 电压采样、重映射的 I2C1 和 PA5 数据就绪中断。[CubeMX 工程](../firmware/baize_base.ioc) · [STM32CubeF1 1.8.7](https://github.com/STMicroelectronics/STM32CubeF1/tree/v1.8.7)
 
@@ -185,7 +185,7 @@ CN3 第 19 脚为探针侧 VDD（3.3 V），本车接线将其留空。第 15 �
 | 单独识别探针 | 小车断电，SWD 线留空，仅接探针 USB。枚举成功后记录探针型号和固件版本。 |
 | 断电接线 | 拔下探针 USB，按上表接好 SWD 四线。对照原图核对电源极性、四个六针插座及 GY-521 在 U7 的 VCC/GND。保留电机插头，稳固架起车架，四轮悬空、线缆远离轮胎。接线核对后让控制板独立供电，再接探针 USB。 |
 | 首次只读 | 用 `cube programmer -c port=SWD mode=HOTPLUG -ob displ` 查看器件 ID、Flash 容量和读保护状态。可读时按实际容量用 `-u` 导出从 `0x08000000` 开始的原 Flash，复核文件长度和 SHA-256。若读保护限制备份，记录限制并结束只读检查，解除保护可能擦除原内容。 |
-| 下载与调试 | 台架保持上述接线。从仓库根目录执行 `cube programmer -c port=SWD freq=480 reset=SWrst -d firmware/build/Debug/baize_base.elf -v -rst`，写入该版固件、校验并软件复位。在驱动未使能时检查源码断点，退出调试后确认采样时间继续推进，记录固件版本。 |
+| 下载与调试 | 首次安装经 SWD 写入包含引导程序与已确认应用的完整镜像，校验并软件复位。日常经 X5 安装串口包。调试时使用对应 ELF 的符号，在驱动未使能时检查源码断点，退出后确认采样时间继续推进。[首装与原版恢复](firmware-update.md#st-link-首装与原版恢复) |
 
 ### 2026-11-21 首次只读结果
 

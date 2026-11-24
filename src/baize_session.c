@@ -25,6 +25,7 @@ static void check_timeout(BaizeSession *session, uint32_t now_ms)
 bool baize_session_receive(BaizeSession *session, uint8_t byte, uint32_t now_ms, BaizeFrame *feedback)
 {
     if (!baize_receive(&session->rx, BAIZE_TO_HOST, byte, feedback)) return false;
+    if (feedback->type == BAIZE_MAINTENANCE_REPLY) return false;
     if (feedback->type == BAIZE_IMU) {
         uint32_t sample_ms = feedback->imu.sample_ms;
         if (session->have_imu_sample && session->imu_sample_ms == sample_ms) return false;

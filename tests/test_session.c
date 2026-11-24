@@ -201,6 +201,8 @@ static void sample_freshness(void)
     assert(baize_session_next(&host, 4, &command) && command.type == BAIZE_TARGET);
     assert(baize_session_target(&host, target));
     assert(report(&host, &imu, 5));
+    assert(!report(&host, &(BaizeFrame){ .type = BAIZE_MAINTENANCE_REPLY,
+                    .reply = {.operation = BAIZE_INFO} }, 6));
     assert(!report(&host, &imu, 25));
     assert(!wheel_sample(&host, 0, 42, BAIZE_ENABLED, BAIZE_RUNNING));
     imu.imu.sample_ms = 20;

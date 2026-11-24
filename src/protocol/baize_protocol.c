@@ -11,6 +11,8 @@ static size_t raw_length(uint8_t type)
     case BAIZE_TARGET: return 20;
     case BAIZE_STATUS: return 60;
     case BAIZE_IMU:    return 32;
+    case BAIZE_MAINTENANCE: return 4 + sizeof(MaintenanceRequest);
+    case BAIZE_MAINTENANCE_REPLY: return 4 + sizeof(MaintenanceReply);
     default:           return 0;
     }
 }
@@ -63,6 +65,8 @@ static int64_t get_i64(const uint8_t *in)
 static void pack(const BaizeFrame *frame, uint8_t *p)
 {
     switch (frame->type) {
+    case BAIZE_MAINTENANCE: memcpy(p, &frame->maintenance, sizeof frame->maintenance); break;
+    case BAIZE_MAINTENANCE_REPLY: memcpy(p, &frame->reply, sizeof frame->reply); break;
     case BAIZE_TARGET:
         for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
             put_le(p + 4*i, (uint32_t)frame->target_mrad_s[i], 4);
@@ -91,6 +95,8 @@ static void pack(const BaizeFrame *frame, uint8_t *p)
 static void unpack(BaizeFrame *frame, const uint8_t *p)
 {
     switch (frame->type) {
+    case BAIZE_MAINTENANCE: memcpy(&frame->maintenance, p, sizeof frame->maintenance); break;
+    case BAIZE_MAINTENANCE_REPLY: memcpy(&frame->reply, p, sizeof frame->reply); break;
     case BAIZE_TARGET:
         for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
             frame->target_mrad_s[i] = get_i32(p + 4*i);

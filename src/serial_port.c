@@ -68,6 +68,7 @@ uint64_t monotonic_ms(void) { return GetTickCount64(); }
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/file.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <time.h>
@@ -78,6 +79,11 @@ SerialPort serial_open(const char *name)
     int port = open(name, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (port == SERIAL_INVALID) {
         perror(name);
+        return SERIAL_INVALID;
+    }
+    if (flock(port, LOCK_EX | LOCK_NB) < 0) {
+        perror(name);
+        close(port);
         return SERIAL_INVALID;
     }
     struct termios settings;

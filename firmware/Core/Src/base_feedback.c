@@ -2,6 +2,7 @@
 #include "base_motion.h"
 #include "main.h"
 #include "mpu6050.h"
+#include "maintenance.h"
 
 extern ADC_HandleTypeDef hadc1;
 extern UART_HandleTypeDef huart2;
@@ -12,9 +13,13 @@ static uint8_t tx_wire[BAIZE_WIRE_MAX];
 /* One latest sample per stream. A nonzero type means it is waiting for TX. */
 static BaizeFrame status_frame, imu_frame;
 static bool adc_calibrated;
+static volatile bool request_ready;
+static MaintenanceRequest request;
+static bool reset_after_reply;
 
 void base_feedback_start(void)
 {
+    maintenance_start();
     adc_calibrated = HAL_ADCEx_Calibration_Start(&hadc1) == HAL_OK;
     if (adc_calibrated) HAL_ADC_Start(&hadc1);
     if (HAL_UART_Receive_IT(&huart2, &rx_byte, 1) != HAL_OK) Error_Handler();
@@ -27,7 +32,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *uart)
     HAL_UART_Receive_IT(uart, &rx_byte, 1);
     BaizeFrame command;
     if (baize_receive(&receiver, BAIZE_TO_BASE, byte, &command)) {
-        base_motion_command(&command, HAL_GetTick());
+        if (command.type == BAIZE_MAINTENANCE) {
+            if (!request_ready) {
+                request = command.maintenance;
+                request_ready = true;
+            }
+        } else if (command.type == BAIZE_STOP || !maintenance_inhibits_motion()) {
+            base_motion_command(&command, HAL_GetTick());
+        }
     }
 }
 
@@ -75,8 +87,20 @@ void base_feedback_queue_status(const Encoders *encoders, uint8_t state, uint8_t
 
 void base_feedback_poll(uint32_t now_ms)
 {
+    maintenance_check_deadline(now_ms);
     if (mpu6050_poll(now_ms, &imu_frame.imu)) imu_frame.type = BAIZE_IMU;
     if (huart2.gState != HAL_UART_STATE_READY) return;
+    if (reset_after_reply) NVIC_SystemReset();
+
+    if (request_ready) {
+        BaizeFrame response = {.type = BAIZE_MAINTENANCE_REPLY};
+        maintenance_handle(&request, &response.reply);
+        uint16_t size = (uint16_t)baize_encode(&response, tx_wire);
+        if (HAL_UART_Transmit_IT(&huart2, tx_wire, size) != HAL_OK) Error_Handler();
+        reset_after_reply = request.operation == BAIZE_ENTER_UPDATE && response.reply.result == BAIZE_OK;
+        request_ready = false;
+        return;
+    }
 
     BaizeFrame *next = status_frame.type ? &status_frame : &imu_frame;
     if (next->type == 0) return;

@@ -1,0 +1,6 @@
+board:
+  name: baize_chassis
+  full_name: Baize STM32F103 chassis
+  vendor: others
+  socs:
+    - name: stm32f103xe

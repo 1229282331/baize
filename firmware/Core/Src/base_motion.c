@@ -16,6 +16,13 @@ static const float friction_pwm[BAIZE_WHEELS] = {125.0f, 125.0f, 125.0f, 90.0f};
 static Drive drive;
 static WheelPi wheels[BAIZE_WHEELS];
 static int16_t last_effort[BAIZE_WHEELS];
+static unsigned parked_updates;
+
+bool base_motion_parked(void)
+{
+    return parked_updates >= 20 && drive.state == BAIZE_DISABLED &&
+           drive.stop_reason == BAIZE_REQUESTED_STOP;
+}
 
 void base_motion_start(void)
 {
@@ -79,4 +86,12 @@ void base_motion_update(const Encoders *encoders, uint32_t elapsed_ms,
             write_effort(i, effort);
         }
     }
+    bool parked = *drive_state == BAIZE_DISABLED && *stop_reason == BAIZE_REQUESTED_STOP;
+    for (size_t i = 0; i < BAIZE_WHEELS; ++i) {
+        if (encoders->velocity_mrad_s[i] != 0 ||
+            __HAL_TIM_GET_COMPARE(&htim8, channels[i]) != htim8.Init.Period + 1u)
+            parked = false;
+    }
+    if (!parked) parked_updates = 0;
+    else if (parked_updates < 20) ++parked_updates;
 }

@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "baize-update"
+version = "1.1.0"
+description = "Local serial firmware updater for the Baize chassis"
+requires-python = ">=3.10"
+dependencies = ["smpclient[serial]==7.4.0", "cobs==1.2.2"]
+
+[project.scripts]
+baize-update = "baize_update.cli:main"

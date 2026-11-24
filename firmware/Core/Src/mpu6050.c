@@ -18,9 +18,44 @@ void HAL_GPIO_EXTI_Callback(uint16_t pin)
     if (pin == IMU_INT_Pin) edge_ms = HAL_GetTick();
 }
 
+static void i2c_half_period(void)
+{
+    /* At 72 MHz the NOPs alone give at least 5 us; IRQs may extend this interval. */
+    for (unsigned i = 0; i < 360; ++i) __NOP();
+}
+
+static void clear_i2c_bus(void)
+{
+    /* An MCU reset leaves the powered MPU6050 mid-byte if it was transmitting. */
+    const uint16_t scl = GPIO_PIN_8, sda = GPIO_PIN_9;
+    __HAL_I2C_DISABLE(&hi2c1);
+    HAL_GPIO_WritePin(GPIOB, scl | sda, GPIO_PIN_SET);
+    GPIO_InitTypeDef pins = {.Pin = scl | sda, .Mode = GPIO_MODE_OUTPUT_OD, .Speed = GPIO_SPEED_FREQ_HIGH};
+    HAL_GPIO_Init(GPIOB, &pins);
+    i2c_half_period();
+    if (HAL_GPIO_ReadPin(GPIOB, scl) == GPIO_PIN_SET) {
+        for (unsigned i = 0; i < 9 && HAL_GPIO_ReadPin(GPIOB, sda) == GPIO_PIN_RESET; ++i) {
+            HAL_GPIO_WritePin(GPIOB, scl, GPIO_PIN_RESET);
+            i2c_half_period();
+            HAL_GPIO_WritePin(GPIOB, scl, GPIO_PIN_SET);
+            i2c_half_period();
+        }
+        /* Finish with a STOP: release SDA while SCL is high. */
+        HAL_GPIO_WritePin(GPIOB, scl | sda, GPIO_PIN_RESET);
+        i2c_half_period();
+        HAL_GPIO_WritePin(GPIOB, scl, GPIO_PIN_SET);
+        i2c_half_period();
+        HAL_GPIO_WritePin(GPIOB, sda, GPIO_PIN_SET);
+        i2c_half_period();
+    }
+    pins.Mode = GPIO_MODE_AF_OD;
+    HAL_GPIO_Init(GPIOB, &pins);
+}
+
 static void retry_probe(uint32_t now_ms)
 {
     __HAL_I2C_DISABLE_IT(&hi2c1, I2C_IT_EVT | I2C_IT_BUF | I2C_IT_ERR);
+    if (__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY)) clear_i2c_bus();
     HAL_I2C_Init(&hi2c1); /* F1 HAL resets the peripheral before reapplying its configuration. */
     address ^= 2u; /* AD0 selects 7-bit address 0x68 or 0x69. */
     step = PROBE;

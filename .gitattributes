@@ -1,2 +1,5 @@
 # 保留随车参考资料的原始字节，包括 HEX 固件的换行。
 docs/四轮灵风小车资料/** -text
+
+# The Zephyr build applies this patch to upstream LF sources from Windows/WSL.
+firmware/boot/*.patch text eol=lf

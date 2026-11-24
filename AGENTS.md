@@ -49,3 +49,4 @@
 - 上位机按厂商标称轮参和四轮转角估算里程。本期轮端后端发布免做地面尺量。应用若有里程误差或车身停距指标，再按该应用的地面和载荷验证。
 - 固件用 C，在 Windows 原生环境使用经典 STM32CubeMX、STM32CubeF1 HAL、Arm GCC 和 CMake/Ninja，通过 SWD 调试。板端负责四轮闭环、超时停机和独立的 MPU6050 六轴遥测，上位机负责运动学、里程计与姿态融合。[架构与接线](docs/architecture.md)
 - 首版运动命令仅来自 USB 串口，115200 bit/s、8N1。轮序固定为左前、右前、左后、右后。上电默认未使能，只有已使能时收到的有效轮速目标才能刷新命令时限。[串口协议与测试向量](docs/base-interface.md)
+- RDK X5 通过 A–A 线和 `baize-update` 做日常更新。MCUboot 将通过型号与摘要校验的镜像放入试运行，X5 验证停机、轮反馈及原有 IMU 后确认。ST-LINK 用于首装、调试和救援。应用向量为 `0x08010200`，SWD 首装使用完整的 `baize-factory.bin`。[构建、升级与原版恢复](docs/firmware-update.md)

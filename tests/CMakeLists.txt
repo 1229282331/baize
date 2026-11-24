@@ -33,6 +33,8 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME imu_calibration COMMAND ${Python3_EXECUTABLE} -B
         ${CMAKE_CURRENT_SOURCE_DIR}/test_imu_calibration.py)
     if(Python3_VERSION VERSION_GREATER_EQUAL "3.10")
+        add_test(NAME update_image COMMAND ${Python3_EXECUTABLE} -B
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_update_image.py)
         add_test(NAME panel_results COMMAND ${Python3_EXECUTABLE} -B
             ${CMAKE_CURRENT_SOURCE_DIR}/test_panel_results.py $<TARGET_FILE:baize_panel_io>)
         if(UNIX)

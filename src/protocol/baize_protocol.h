@@ -15,9 +15,23 @@ enum {
     BAIZE_STOP = 0x01,
     BAIZE_ENABLE = 0x02,
     BAIZE_TARGET = 0x03,
+    BAIZE_MAINTENANCE = 0x04,
     BAIZE_STATUS = 0x81,
-    BAIZE_IMU = 0x82
+    BAIZE_IMU = 0x82,
+    BAIZE_MAINTENANCE_REPLY = 0x83
 };
+
+enum { BAIZE_INFO = 1, BAIZE_ENTER_UPDATE, BAIZE_CONFIRM };
+enum { BAIZE_OK, BAIZE_BUSY, BAIZE_BAD_IMAGE, BAIZE_WRITE_FAILED };
+typedef struct {
+    uint8_t operation;
+    uint8_t hash[32];
+} MaintenanceRequest;
+typedef struct {
+    uint8_t operation, result, trial;
+    uint8_t version[8]; /* MCUboot major, minor, revision LE16, build LE32. */
+    uint8_t hash[32];
+} MaintenanceReply;
 
 enum { BAIZE_DISABLED = 0, BAIZE_ENABLED = 1, BAIZE_FAULT = 2 };
 enum {
@@ -49,6 +63,8 @@ typedef struct {
         int32_t target_mrad_s[BAIZE_WHEELS];
         BaizeStatus status;
         BaizeImu imu;
+        MaintenanceRequest maintenance;
+        MaintenanceReply reply;
     };
 } BaizeFrame;
 

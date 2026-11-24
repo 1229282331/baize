@@ -61,6 +61,23 @@ static void published_vectors(void)
     } }, imu, sizeof imu);
 }
 
+static void maintenance_vectors(void)
+{
+    /* Independent X5 codec, digest bytes 1..32, version 1.1.2+3. */
+    uint8_t request[39] = {0x26, 1, 4, 3, [36] = 0x38, 0x1d, 0};
+    uint8_t reply[49] = {4, 1, 0x83, 3, 1, 4, 1, 1, 2, 2, 3, 1, 1, 0x23, [46] = 0xfc, 0x41, 0};
+    BaizeFrame confirm = {.type = BAIZE_MAINTENANCE, .maintenance.operation = BAIZE_CONFIRM};
+    BaizeFrame confirmed = {.type = BAIZE_MAINTENANCE_REPLY,
+                            .reply = {.operation = BAIZE_CONFIRM, .version = {1, 1, 2, 0, 3}}};
+    for (size_t i = 0; i < 32; ++i) {
+        uint8_t value = (uint8_t)(i + 1);
+        request[4+i] = reply[14+i] = value;
+        confirm.maintenance.hash[i] = confirmed.reply.hash[i] = value;
+    }
+    check_vector(BAIZE_TO_BASE, &confirm, request, sizeof request);
+    check_vector(BAIZE_TO_HOST, &confirmed, reply, sizeof reply);
+}
+
 static void invalid_then_valid(BaizeReceiver *rx, const uint8_t *bad, size_t length)
 {
     BaizeFrame output = { .type = BAIZE_IMU };
@@ -127,6 +144,7 @@ static void integer_boundaries(void)
 int main(void)
 {
     published_vectors();
+    maintenance_vectors();
     stream_recovery();
     integer_boundaries();
     return 0;

@@ -1,0 +1,51 @@
+/dts-v1/;
+#include <st/f1/stm32f103Xc.dtsi>
+#include <st/f1/stm32f103r(c-d-e)tx-pinctrl.dtsi>
+
+/ {
+	model = "Baize chassis STM32F103RC";
+	compatible = "baize,chassis";
+	chosen {
+		zephyr,console = &usart2;
+		zephyr,uart-mcumgr = &usart2;
+		zephyr,sram = &sram0;
+		zephyr,flash = &flash0;
+		zephyr,code-partition = &boot_partition;
+	};
+	aliases { watchdog0 = &iwdg; };
+};
+
+&clk_hse {
+	clock-frequency = <DT_FREQ_M(8)>;
+	status = "okay";
+};
+&clk_lsi { status = "okay"; };
+&pll {
+	mul = <9>;
+	clocks = <&clk_hse>;
+	status = "okay";
+};
+&rcc {
+	clocks = <&pll>;
+	clock-frequency = <DT_FREQ_M(72)>;
+	ahb-prescaler = <1>;
+	apb1-prescaler = <2>;
+	apb2-prescaler = <1>;
+};
+&iwdg { status = "okay"; };
+&usart2 {
+	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
+	pinctrl-names = "default";
+	current-speed = <115200>;
+	status = "okay";
+};
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		boot_partition: partition@0 { label = "mcuboot"; reg = <0 0x10000>; };
+		slot0_partition: partition@10000 { label = "image-0"; reg = <0x10000 0x17800>; };
+		slot1_partition: partition@27800 { label = "image-1"; reg = <0x27800 0x18000>; };
+	};
+};
