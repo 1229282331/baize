@@ -83,7 +83,8 @@ async def stage(port, data, identity):
 
 
 def verify_trial(port, identity, require_imu, had_primary=True):
-    until = time.monotonic() + 9
+    # Flash exchange precedes application startup. The MCU owns its ten-second trial deadline.
+    until = time.monotonic() + 25
     with closing(Application(port)) as app:
         while time.monotonic() < until:
             try:

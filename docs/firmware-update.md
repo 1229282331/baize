@@ -82,6 +82,15 @@ sudo ln -sfn /opt/baize-update/venv/bin/baize-update /usr/local/bin/baize-update
 
 使用发布包时，安装命令可改为 `sudo /opt/baize-update/venv/bin/pip install -c x5-requirements.txt ./baize_update-1.1.0-py3-none-any.whl`。运行工具与开发电脑上的 imgtool 分用各自的 Python 环境。
 
+在仓库根目录可以从当前提交重建发布用 wheel。下面的源码归档、解包和输出都在构建目录内。
+
+```sh
+mkdir -p build/update
+git archive --format=tar.gz --prefix=baize-update/ -o build/update/updater-src.tar.gz HEAD:tools/update
+SOURCE_DATE_EPOCH=$(git log -1 --format=%ct -- tools/update) \
+  python3 -m pip wheel --no-deps -w build/update build/update/updater-src.tar.gz
+```
+
 ### 复做故障试验
 
 在开发电脑已激活 imgtool 的环境运行 `python tests/make_update_fixtures.py firmware/build/Release/chassis.bin build/update-test`，试验目录会得到正常的 `+1`、在复位入口停住的 `+2` 及填满 94,208 字节上限的 `+3`。这些文件仅用于台架验收。先用正式包建立已确认的基线，再在 X5 上用升级工具的 Python 运行以下脚本：
