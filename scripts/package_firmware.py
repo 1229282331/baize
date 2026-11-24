@@ -6,6 +6,9 @@ import struct
 import subprocess
 import tempfile
 
+PRIMARY_SIZE = 94 * 1024
+MAX_SERIAL_IMAGE = PRIMARY_SIZE - 2048
+
 
 def vectors(data, base):
     if len(data) < 8:
@@ -25,19 +28,19 @@ def main():
     args = parser.parse_args()
     app = args.app.read_bytes()
     vectors(app, 0x08010200)
-    if len(app) + 512 + 128 > 94 * 1024 - 2048:
-        raise ValueError("application overlaps its reserved trailer page")
     args.output.mkdir(parents=True, exist_ok=True)
     tool = shutil.which("imgtool")
     if not tool:
         parser.error("activate the MCUboot imgtool environment")
     sign = [tool, "sign", "--header-size", "512", "--pad-header", "--align", "2",
-            "--slot-size", str(94 * 1024), "--max-sectors", "48", "--version", args.version,
+            "--slot-size", str(PRIMARY_SIZE), "--max-sectors", "48", "--version", args.version,
             "--cid", "fe431dd9-ebe8-5fa2-93ea-0790b4a0472d"]
     with tempfile.TemporaryDirectory(dir=args.output) as directory:
         tmp = Path(directory)
         update = tmp / "update.bin"
         subprocess.run([*sign, args.app, update], check=True)
+        if update.stat().st_size > MAX_SERIAL_IMAGE:
+            raise ValueError("application and metadata overlap the reserved trailer page")
         if args.boot:
             boot = args.boot.read_bytes()
             vectors(boot, 0x08000000)
@@ -46,7 +49,7 @@ def main():
             primary = tmp / "primary.bin"
             subprocess.run([*sign, "--confirm", args.app, primary], check=True)
             initial = primary.read_bytes()
-            if (len(initial) != 94 * 1024 or initial[-24] != 1 or initial[-32] != 0xff or
+            if (len(initial) != PRIMARY_SIZE or initial[-24] != 1 or initial[-32] != 0xff or
                     initial[:update.stat().st_size] != update.read_bytes()):
                 raise ValueError("invalid confirmed primary layout")
             factory = tmp / "factory.bin"

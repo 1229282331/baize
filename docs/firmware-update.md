@@ -43,7 +43,7 @@ sudo baize-update install ./baize-1.1.0.bin
 
 ## 构建与安装工具
 
-在 Windows 的仓库中运行：
+在 Windows 上构建 HAL 应用：
 
 ```powershell
 cd firmware
@@ -51,11 +51,12 @@ cube cmake --preset Release
 cube cmake --build --preset Release
 ```
 
-引导程序和打包在开发电脑 Linux / WSL 进行。Ubuntu 24.04 安装 Git、Python venv、Ninja、设备树编译器、Arm GNU GCC 与 newlib。下列命令从仓库根目录执行。west 工作区放在仓库外，供后续构建复用：
+引导程序和打包使用开发电脑上的 Linux / WSL。下列命令从仓库根目录执行。west 工作区放在仓库外供后续复用。此版本使用 Ubuntu 24.04 的 Arm GNU GCC 13.2.1。
 
 ```sh
 repo=$PWD
 work=$HOME/.cache/baize-boot
+sudo apt install git python3-venv ninja-build device-tree-compiler gcc-arm-none-eabi libnewlib-arm-none-eabi
 mkdir -p "$work"
 python3 -m venv "$work/venv"
 . "$work/venv/bin/activate"
@@ -78,6 +79,22 @@ sudo python3 -m venv /opt/baize-update/venv
 sudo /opt/baize-update/venv/bin/pip install ./tools/update
 sudo ln -sfn /opt/baize-update/venv/bin/baize-update /usr/local/bin/baize-update
 ```
+
+使用发布包时，安装命令可改为 `sudo /opt/baize-update/venv/bin/pip install -c x5-requirements.txt ./baize_update-1.1.0-py3-none-any.whl`。运行工具与开发电脑上的 imgtool 分用各自的 Python 环境。
+
+### 复做故障试验
+
+在开发电脑已激活 imgtool 的环境运行 `python tests/make_update_fixtures.py firmware/build/Release/chassis.bin build/update-test`，试验目录会得到正常的 `+1`、在复位入口停住的 `+2` 及填满 94,208 字节上限的 `+3`。这些文件仅用于台架验收。先用正式包建立已确认的基线，再在 X5 上用升级工具的 Python 运行以下脚本：
+
+```sh
+py=/opt/baize-update/venv/bin/python
+$py tests/qualify_update.py interrupt baize-1.1.0+1.bin
+$py tests/qualify_update.py no-confirm baize-1.1.0+1.bin
+$py tests/qualify_update.py early-hang baize-1.1.0+2.bin
+$py tests/qualify_update.py reject baize-1.1.0+1.bin
+```
+
+每项从一份摘要不同的已确认镜像开始，结束时核对同一基线、四轮停车和原有 IMU。串口断开观察所用的等待时间是复查时刻。上游擦写边界试验可在固定版本的 MCUboot `sim/` 下执行 `cargo test --no-default-features --features swap-offset,validate-primary-slot,bootstrap`，需检出该版本的 `ext/mbedtls` 子模块。[实车故障试验](../tests/qualify_update.py) · [上游模拟器](https://github.com/mcu-tools/mcuboot/tree/ee39e2d694bd827ffd1bebbce2f571a9154e6ec2/sim)
 
 ## ST-LINK 首装与原版恢复
 
