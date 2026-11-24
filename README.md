@@ -6,13 +6,15 @@
 
 在本车 X5 上运行 `baize-update info` 可查询底盘版本，`/opt/baize-sdk/1.1.1` 提供已验收的头文件、静态库、示例和接口文档。日常通过 `sudo baize-update install ./baize-1.1.1.bin` 更新。ST-LINK 用于首次安装、板级调试和救援。[升级与恢复](docs/firmware-update.md)
 
+v1.1.1 交付包的 SHA-256 为 `732db4118273fdb30d4376e1837b9e61eb15af516124b7568278ab824fb8ec50`。解包后执行 `sha256sum -c SHA256SUMS` 可逐文件校验。
+
 **接入底盘（main）**　从仓库根目录引入 `baize_host`。C++ 使用 `baize::Chassis`，纯 C 使用 `<baize/chassis.h>`。应用每周期读取轮状态和可选 IMU，再写入四轮目标（rad/s）。按车身速度驾驶时，主机库将前进和转向速度换算成四轮目标。两个示例都已在本车完成给速、停机和重连。[接口与单位](docs/base-interface.md#主机库读写接口) · [C++ 示例](examples/chassis/main.cpp) · [C 示例](examples/c/main.c) · [实车复验](docs/bringup-and-acceptance.md#主机读写接口实车复验)
 
 **本机控制面板**　Windows 双击启动脚本，选择板载 CH340 的串口并连接。可在同一窗口操作单轮、整车或四个独立轮速，查看轮速曲线、六轴、电压和停机状态。每次点动自动保存目标、实测和判断结果，实物轮位与方向可在记录页集中填写。[启动底盘控制台](tools/panel/启动底盘控制台.cmd) · [操作与记录说明](docs/bringup-and-acceptance.md#本机控制面板)
 
 **空载 v1.0.0（2026-11-22）**　独立 C++ 程序已通过板载 CH340 完成四轮给速、轮状态与 IMU 读取、停机和重连。空载平地直行通过的轮速档为 ±0.35、±0.50、±1.00 和 ±1.50 rad/s，每趟 1.6 秒，两端均做了双向复验。运动中拔掉 USB，最后一条有效目标后 151 ms 内四路输出全部归中。该归档的主机入口为 `baize_session_*`。交付包含固件、回退页镜像、Windows/Linux 工具、控制面板、主机库和原始记录。[下载 v1.0.0 交付包](docs/measurements/baize-v1.0.0.zip) · [现场验收与使用边界](docs/bringup-and-acceptance.md#空载正式版实车验收) · [发布时的接入示例](https://github.com/1229282331/baize/tree/v1.0.0/examples/chassis)
 
-交付包 SHA-256 为 `d03181da2b7747db0725e7ca7c2c6a51333259196e46d89a1600e818b3f75a9a`。解压后可按 `SHA256SUMS` 校验各文件，按包内说明复算现场数据。
+历史 v1.0.0 交付包 SHA-256 为 `d03181da2b7747db0725e7ca7c2c6a51333259196e46d89a1600e818b3f75a9a`。
 
 **四轮调速**　发布固件每 5 ms 用编码器闭环调速，采用 PI 加摩擦和速度前馈。四轮架空和本次空载平地的平稳轮速建议下限均为 **0.35 rad/s**（约 3.3 转/分）。另用 1 ms 低速 PI 做过架空对照，在 0.10 rad/s 的 32 个轮次中均能连续转动，0.20 rad/s 的 32 个轮次全部达到平稳标准，PWM 调节幅度也更大。[常规固件的轮速下限](docs/bringup-and-acceptance.md#架空低速下限与微分对照) · [1 ms 调速实测](docs/bringup-and-acceptance.md#低速-pi-的-1-ms-实车对照)
 
