@@ -2,7 +2,9 @@
 
 本项目为搭载机械臂的四轮灵风小车开发 STM32 底盘固件和上位机接口。上位机通过 USB 一次下发四轮目标角速度。底盘独立调速，返回编码器反馈、电源电压和驱动状态，并单独上报 MPU6050 的三轴加速度和三轴角速度。姿态融合由上位机负责，机械臂使用自己的硬件后端。
 
-**车载固件升级 v1.1.0**　在 RDK X5 上运行 `baize-update info` 查询底盘版本，运行 `sudo baize-update install ./baize-1.1.0.bin` 通过现有 A–A 线更新。候选固件先停机试运行，X5 检查轮反馈及原先可用的 IMU 后确认。实车已通过传输中断、未确认和启动卡死后的恢复试验。ST-LINK 用于首次迁移、板级调试和救援。[下载 v1.1.0 交付包](docs/measurements/baize-v1.1.0.zip) · [升级、恢复与实车记录](docs/firmware-update.md)
+**当前交付 v1.1.1（2026-11-25）**　RDK X5 与本车 STM32 已通过 A–A 线完成升级、回退和重连。SDK 拒收重复及乱序遥测，升级器仅在停车轮反馈和原有 IMU 同时有效时确认候选版。三分钟实线采集获得 9,000 个轮样本和 8,984 个 IMU 样本。交付包包含 SWD 首装镜像、日常升级包、旧版回退包、源码、C/C++ SDK、各平台工具、许可和实测记录。[下载 v1.1.1](docs/measurements/baize-v1.1.1.zip) · [SDK 接口](docs/base-interface.md#主机库读写接口) · [本版实车验收](docs/firmware-update.md#v111-实车记录) · [同型号单台出厂检查](docs/firmware-update.md#同型号单台出厂检查)
+
+在本车 X5 上运行 `baize-update info` 可查询底盘版本，`/opt/baize-sdk/1.1.1` 提供已验收的头文件、静态库、示例和接口文档。日常通过 `sudo baize-update install ./baize-1.1.1.bin` 更新。ST-LINK 用于首次安装、板级调试和救援。[升级与恢复](docs/firmware-update.md)
 
 **接入底盘（main）**　从仓库根目录引入 `baize_host`。C++ 使用 `baize::Chassis`，纯 C 使用 `<baize/chassis.h>`。应用每周期读取轮状态和可选 IMU，再写入四轮目标（rad/s）。按车身速度驾驶时，主机库将前进和转向速度换算成四轮目标。两个示例都已在本车完成给速、停机和重连。[接口与单位](docs/base-interface.md#主机库读写接口) · [C++ 示例](examples/chassis/main.cpp) · [C 示例](examples/c/main.c) · [实车复验](docs/bringup-and-acceptance.md#主机读写接口实车复验)
 
