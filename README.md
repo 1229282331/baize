@@ -2,7 +2,7 @@
 
 本项目为搭载机械臂的四轮灵风小车开发 STM32 底盘固件和上位机接口。上位机通过 USB 一次下发四轮目标角速度。底盘独立调速，返回编码器反馈、电源电压和驱动状态，并单独上报 MPU6050 的三轴加速度和三轴角速度。姿态融合由上位机负责，机械臂使用自己的硬件后端。
 
-**车载固件升级**　在 RDK X5 上运行 `baize-update info` 查询底盘版本，运行 `sudo baize-update install ./baize-1.1.0.bin` 通过现有 A–A 线更新。候选固件先停机试运行，X5 检查轮反馈及原先可用的 IMU 后确认；超时或启动卡死由 MCUboot 回退。ST-LINK 用于首次迁移、板级调试和救援。[固件升级与恢复](docs/firmware-update.md)
+**车载固件升级 v1.1.0**　在 RDK X5 上运行 `baize-update info` 查询底盘版本，运行 `sudo baize-update install ./baize-1.1.0.bin` 通过现有 A–A 线更新。候选固件先停机试运行，X5 检查轮反馈及原先可用的 IMU 后确认。实车已通过传输中断、未确认和启动卡死后的恢复试验。ST-LINK 用于首次迁移、板级调试和救援。[下载 v1.1.0 交付包](docs/measurements/baize-v1.1.0.zip) · [升级、恢复与实车记录](docs/firmware-update.md)
 
 **接入底盘（main）**　从仓库根目录引入 `baize_host`。C++ 使用 `baize::Chassis`，纯 C 使用 `<baize/chassis.h>`。应用每周期读取轮状态和可选 IMU，再写入四轮目标（rad/s）。按车身速度驾驶时，主机库将前进和转向速度换算成四轮目标。两个示例都已在本车完成给速、停机和重连。[接口与单位](docs/base-interface.md#主机库读写接口) · [C++ 示例](examples/chassis/main.cpp) · [C 示例](examples/c/main.c) · [实车复验](docs/bringup-and-acceptance.md#主机读写接口实车复验)
 

@@ -82,6 +82,8 @@ sudo ln -sfn /opt/baize-update/venv/bin/baize-update /usr/local/bin/baize-update
 
 使用发布包时，安装命令可改为 `sudo /opt/baize-update/venv/bin/pip install -c x5-requirements.txt ./baize_update-1.1.0-py3-none-any.whl`。运行工具与开发电脑上的 imgtool 分用各自的 Python 环境。
 
+本车的 X5 已安装带串口锁的 `baize-monitor`。用 `baize-monitor /dev/ttyUSB0 100` 可在维护前后采集轮状态。发布包中的 `baize-monitor-linux-arm64` 与车上使用的文件相同。
+
 在仓库根目录可以从当前提交重建发布用 wheel。下面的源码归档、解包和输出都在构建目录内。
 
 ```sh
@@ -119,3 +121,21 @@ cmp original-1.bin original-2.bin && sha256sum original-1.bin
 ```
 
 恢复首装前整片内容时，先核对本机独立备份的 SHA-256，使用同一条写入与校验命令，将两个 `baize-factory.bin` 均换为 `original-1.bin`。恢复到 v1.0.0 后用原监视工具读轮状态和 IMU。再次使用串口升级前须重新执行 SWD 首装。
+
+## v1.1.0 实车记录
+
+2026-11-24，RDK X5、板载 CH340 和 STM32F103 底盘，四轮架空。正式应用 24,248 字节，引导程序 30,668 字节。源码提交 `fc97a22` 的串口包、SWD 首装镜像与 X5 工具均逐字节重建一致。首装经 SWD 独立读回 260,096 字节，与发布的首装文件完全相同。[交付包、依赖版本和原始记录](measurements/baize-v1.1.0.zip)
+
+整个 ZIP 的 SHA-256 为 `c5930971e1e7124e43eb48015ba88ca49c28d6b62ef9ecd984194487ef2f3c78`。解压后运行 `sha256sum -c SHA256SUMS` 可核对每个交付文件。
+
+| 项目 | 实测结果 |
+| --- | --- |
+| 日常升级与 SSH 断开 | `1.1.0+0 → +1` 的 systemd 服务耗时 12.167 s。反向安装时，在服务启动后关闭实际 SSH 终端，重新登录看到服务成功，底盘回报 `+0` 已确认。两次均经 A–A 线传输、校验停机状态和 IMU。 |
+| 传输中断与错误输入 | 24,824 字节包只发到 2,224 字节就关闭维护串口。静候后读到原确认版本和两路反馈。X5 在打开串口前拒绝错型号、损坏、截断和首装文件。通过底层 SMP 直接提交时，STM32 也拒绝前三种候选的试运行、向运行区上传和永久升级请求。上位机与升级工具双向占用均被拦截。 |
+| 超时与看门狗回退 | 试运行期间关闭维护串口、不给确认，老版本自行恢复。另一次以最大镜像作为后备，候选轮反馈最后的板端时间为 9,981 ms，恢复镜像首帧为 21 ms，此次跨复位与整槽交换的反馈间隔为 5.736 s，全段轮状态均未使能且零速。复位入口即停住的专用候选也自动退回，试验前清除的 RCC 复位标志从 `0x00000003` 变为 `0x34000003`，其中 IWDGRSTF 已置位。 |
+| 分区上限和停车 | 94,208 字节的完整包在 31.627 s 内试运行并通过确认。多一个字节的构建被拒绝。单独进入维护时非停机读取 GPIO，PC6～PC9 均为推挽输出，输入采样与输出锁存均为高。 |
+| 兼容性和最终状态 | 首装前编译的原 C 示例直行、C++ 示例原地转向，各点动约 300 ms。两者均读到 IMU、主动停机并以未使能状态重连。故障试验后再次通过串口装回正式包。最终静置采集末 12 帧覆盖 220 ms，四轮未使能、零速且转角不变。去除连接初段的 USB 缓冲数据，按不同的板端采样时间计算，轮反馈 50.00 Hz、IMU 49.91 Hz。 |
+
+Windows 9 项、Linux 开发机与 X5 各 14 项回归通过。固定版本的 MCUboot 模拟器启用 `swap-offset,validate-primary-slot,bootstrap`，25 项测试通过，覆盖交换、回退和擦写操作间注入复位。真实整车断电未实测。SWD 首装镜像 SHA-256 为 `d4d00c3fd879805f31898d405b3c55936968d04841f09dd51c69674bab54f98c`，串口包文件 SHA-256 为 `371553a3d4cc61f7c27ca1099cf83b5bbb949dddd9350b80f70722b825fc8e4d`。板上 `info` 报告的镜像摘要为 `a9df3e7ad41252a63da94b66eb9d7b74fbd6564fcc42cdbb8c442ff96225a9ea`。
+
+首装前的独立全片备份保存在本机 `%LOCALAPPDATA%\Baize\Backups\20261124-before-serial-update\original-flash.bin` 和车载 X5 的 `/var/backups/baize/v1.0.0-before-mcuboot.bin`。两份均为 524,288 字节，SHA-256 为 `9f33c03b3c079ff9b43f89e45b8831d86e1571f1ec006c195e74fc96cdb84af4`。镜像前 22,480 字节与已发布的 v1.0.0 应用完全一致。

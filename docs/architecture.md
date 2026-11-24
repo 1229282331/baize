@@ -81,7 +81,7 @@ USART2 经 PA2/TX、PA3/RX 接 CH340N。双层 USB 座的上层将 D+、D− 和
 
 ## 开发环境与版本
 
-主开发环境选 Windows 原生。用经典 STM32CubeMX 配置 F1 系列外设，使用 STM32CubeF1 HAL、Arm GCC 和 CMake/Ninja 构建。VS Code 与终端共用 CMake 预设，烧录和断点调试走 SWD。将 `.ioc`、生成的初始化代码、CMake 预设和工具版本锁定文件纳入版本管理，普通构建直接使用仓库中的源文件。[ST 配置工具](https://www.st.com/content/st_com/en/stm32cubemx.html) · [STM32CubeF1](https://github.com/STMicroelectronics/STM32CubeF1) · [ST 可复现构建示例](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_First_Project.html)
+主开发环境选 Windows 原生。用经典 STM32CubeMX 配置 F1 系列外设，使用 STM32CubeF1 HAL、Arm GCC 和 CMake/Ninja 构建。VS Code 与终端共用 CMake 预设。日常升级通过 X5 和板载 CH340，首次安装和断点调试走 SWD。将 `.ioc`、生成的初始化代码、CMake 预设和工具版本锁定文件纳入版本管理，普通构建直接使用仓库中的源文件。[ST 配置工具](https://www.st.com/content/st_com/en/stm32cubemx.html) · [STM32CubeF1](https://github.com/STMicroelectronics/STM32CubeF1) · [ST 可复现构建示例](https://dev.st.com/stm32cube-docs/stm32cubecli/latest/en/docs/markup/STM32CubeCLI_Getting_Started/STM32CubeCLI_First_Project.html)
 
 Keil µVision 支持命令行构建，旧工程可用于查阅原厂实现。新固件只维护一套 CMake 构建配置，板上交叉编译和电脑端逻辑测试共用项目中的手写源码。[µVision 命令行](https://www.keil.com/support/man/docs/uv4cl/uv4cl_commandline.htm)
 
