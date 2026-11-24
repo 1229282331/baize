@@ -63,9 +63,11 @@ async def recovery(port):
         await client.disconnect()
 
 
-async def stage(port, data, identity):
+async def stage(port, data, identity, *, baseline_known):
     async with recovery(port) as (client, images):
         had_primary = any(image.slot == 0 and image.bootable for image in images)
+        if had_primary and not baseline_known:
+            raise RuntimeError("bootable primary did not report its capabilities; retry after it restarts")
         async for offset in client.upload(data, slot=2, first_timeout_s=4, subsequent_timeout_s=3):
             if offset == len(data):
                 print(f"staged {offset} bytes", flush=True)
@@ -115,7 +117,15 @@ def install(port, data, identity):
             try:
                 running = app.info()
             except TimeoutError:
-                running = None   # Already in serial recovery is a valid starting state.
+                # An interrupted upload leaves MCUboot active for ten idle seconds.
+                # Listen without extending its maintenance window, then probe the primary.
+                for kind, body in app.packets(time.monotonic() + 14):
+                    if kind == 0x81 and len(body) == 56:
+                        break
+                try:
+                    running = app.info()
+                except TimeoutError:
+                    running = None
             if running:
                 had_imu = app.parked()
                 if running.identity == identity:
@@ -128,7 +138,7 @@ def install(port, data, identity):
                 print(f"updating {running.identity}", flush=True)
                 app.request(ENTER)
         time.sleep(0.08)
-        had_primary = asyncio.run(stage(port, data, identity))
+        had_primary = asyncio.run(stage(port, data, identity, baseline_known=running is not None))
         verify_trial(port, identity, had_imu, running is not None or had_primary)
 
 

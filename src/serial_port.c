@@ -76,7 +76,7 @@ uint64_t monotonic_ms(void) { return GetTickCount64(); }
 
 SerialPort serial_open(const char *name)
 {
-    int port = open(name, O_RDWR | O_NOCTTY | O_NONBLOCK);
+    int port = open(name, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
     if (port == SERIAL_INVALID) {
         perror(name);
         return SERIAL_INVALID;

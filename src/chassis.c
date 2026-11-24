@@ -180,8 +180,8 @@ bool baize_chassis_read(baize_chassis *chassis, baize_chassis_state *state)
     uint64_t now_ms = monotonic_ms();
     if (!send_next(chassis, now_ms)) return false;
     *state = chassis->state;
-    state->drive.valid &= now_ms - chassis->last_wheel_rx_ms < FEEDBACK_TIMEOUT_MS;
-    state->imu.valid &= now_ms - chassis->last_imu_rx_ms < FEEDBACK_TIMEOUT_MS;
+    state->drive.valid &= !chassis->drive.awaiting_restart_ack && now_ms - chassis->last_wheel_rx_ms < FEEDBACK_TIMEOUT_MS;
+    state->imu.valid &= !chassis->drive.awaiting_restart_ack && now_ms - chassis->last_imu_rx_ms < FEEDBACK_TIMEOUT_MS;
     return true;
 }
 

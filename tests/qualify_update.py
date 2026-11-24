@@ -5,12 +5,13 @@ from contextlib import closing
 import hashlib
 from pathlib import Path
 import time
+from unittest.mock import patch
 
 from smpclient import error
 from smpclient.requests.image_management import ImageStatesWrite, ImageUploadWrite
 
-from baize_update.application import Application, ENTER
-from baize_update.cli import locked, read_package, recovery, stage
+from baize_update.application import Application, CONFIRM, ENTER
+from baize_update.cli import locked, read_package, recovery, stage, verify_trial
 
 
 def check(condition, message):
@@ -57,6 +58,44 @@ async def rejected(port, data, identity):
         print("permanent request refused", flush=True)
 
 
+def verify_missing_stream(port, identity, mode):
+    counts = {0x81: 0, 0x82: 0}
+
+    class FilteredApplication(Application):
+        observing_since = None
+
+        def parked(self, **kwargs):
+            self.observing_since = time.monotonic()
+            return super().parked(**kwargs)
+
+        def request(self, operation, *args, **kwargs):
+            check(operation != CONFIRM, "attempted to confirm despite missing telemetry")
+            return super().request(operation, *args, **kwargs)
+
+        def packets(self, deadline):
+            for kind, body in super().packets(deadline):
+                if self.observing_since is not None:
+                    elapsed = time.monotonic() - self.observing_since
+                    if mode == "missing-wheels":
+                        drop = (kind == 0x81 and elapsed > 0.27) or (kind == 0x82 and elapsed < 0.70)
+                    else:
+                        drop = kind == 0x82 and elapsed > 0.05
+                    if drop:
+                        counts[kind] += 1
+                        continue
+                yield kind, body
+
+    with patch("baize_update.cli.Application", FilteredApplication):
+        try:
+            verify_trial(port, identity, require_imu=True)
+        except RuntimeError as exc:
+            check("stationary wheel feedback or expected IMU stream missing" in str(exc), str(exc))
+        else:
+            raise RuntimeError("unhealthy candidate passed verification")
+    check(counts[0x81 if mode == "missing-wheels" else 0x82] > 0, "no real samples filtered")
+    print(f"withheld {counts[0x81]} wheels and {counts[0x82]} IMUs at X5; no confirmation sent", flush=True)
+
+
 def run(mode, port, package):
     data, identity = read_package(package)
     with locked(port):
@@ -67,13 +106,18 @@ def run(mode, port, package):
             print(f"baseline {original.identity}; candidate {identity}", flush=True)
             app.request(ENTER)
         time.sleep(0.08)
-        if mode == "interrupt":
+        if mode in ("interrupt", "interrupt-and-exit"):
             asyncio.run(interrupted(port, data))
+            if mode == "interrupt-and-exit":
+                return
         elif mode == "reject":
             asyncio.run(rejected(port, data, identity))
         else:
-            asyncio.run(stage(port, data, identity))
+            asyncio.run(stage(port, data, identity, baseline_known=True))
         start = time.monotonic()
+        if mode in ("missing-wheels", "missing-imu"):
+            check(had_imu, "fixture requires a working IMU on the baseline")
+            verify_missing_stream(port, identity, mode)
         if mode == "no-confirm":
             with closing(Application(port)) as app:
                 until = start + 7
@@ -102,7 +146,8 @@ def run(mode, port, package):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", choices=["interrupt", "reject", "no-confirm", "early-hang"])
+    parser.add_argument("mode", choices=["interrupt", "interrupt-and-exit", "reject", "no-confirm",
+                                         "early-hang", "missing-wheels", "missing-imu"])
     parser.add_argument("package", type=Path)
     parser.add_argument("--port", default="/dev/ttyUSB0")
     args = parser.parse_args()

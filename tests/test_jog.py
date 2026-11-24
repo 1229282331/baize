@@ -7,12 +7,14 @@ import struct
 import subprocess
 import sys
 import time
+import tty
 
 from test_monitor import imu, status, wire
 
 
 def trial(mode):
     master, slave = pty.openpty()
+    tty.setraw(slave)
     duration = "120" if mode == "normal" else "1800"
     args = [sys.argv[1], os.ttyname(slave), "--jog", duration, "1", "-0.7", "-0.5", "0.4"]
     proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)

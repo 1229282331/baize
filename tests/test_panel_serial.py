@@ -1,10 +1,12 @@
 """Exercise the desktop I/O worker, native session and logs over a POSIX serial port."""
 import csv
+import fcntl
 import json
 import os
 import pty
 import select
 import struct
+import subprocess
 import sys
 import tempfile
 import time
@@ -110,6 +112,24 @@ def read_rows(file):
         return list(csv.DictReader(stream))
 
 
+def serial_lock_released_on_exec(lib):
+    master, slave = pty.openpty()
+    try:
+        port = os.ttyname(slave)
+        link = lib.panel_open(os.fsencode(port))
+        assert link
+        with subprocess.Popen(["sleep", "5"], close_fds=False) as child:
+            try:
+                lib.panel_close(link)
+                with open(port, "rb", buffering=0) as observer:
+                    fcntl.flock(observer, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            finally:
+                child.terminate()
+    finally:
+        os.close(slave)
+        os.close(master)
+
+
 def exercise(lib, folder):
     b = Bench(lib, folder)
     try:
@@ -195,5 +215,7 @@ def exercise(lib, folder):
 
 
 if __name__ == "__main__":
+    lib = library(sys.argv[1])
+    serial_lock_released_on_exec(lib)
     with tempfile.TemporaryDirectory() as directory:
-        exercise(library(sys.argv[1]), Path(directory))
+        exercise(lib, Path(directory))

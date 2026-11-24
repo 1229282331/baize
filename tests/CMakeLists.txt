@@ -38,6 +38,9 @@ if(Python3_Interpreter_FOUND)
         add_test(NAME panel_results COMMAND ${Python3_EXECUTABLE} -B
             ${CMAKE_CURRENT_SOURCE_DIR}/test_panel_results.py $<TARGET_FILE:baize_panel_io>)
         if(UNIX)
+            add_test(NAME update_health COMMAND ${Python3_EXECUTABLE} -B
+                ${CMAKE_CURRENT_SOURCE_DIR}/test_update_health.py --skip-missing-deps)
+            set_tests_properties(update_health PROPERTIES SKIP_RETURN_CODE 77)
             add_test(NAME panel_serial COMMAND ${Python3_EXECUTABLE} -B
                 ${CMAKE_CURRENT_SOURCE_DIR}/test_panel_serial.py $<TARGET_FILE:baize_panel_io>)
         endif()

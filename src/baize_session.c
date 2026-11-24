@@ -22,13 +22,20 @@ static void check_timeout(BaizeSession *session, uint32_t now_ms)
     if (stale || enable_timed_out) baize_session_stop(session);
 }
 
+static bool later(uint32_t tick, uint32_t previous)
+{
+    uint32_t delta = tick - previous;
+    return delta != 0 && delta <= INT32_MAX;
+}
+
 bool baize_session_receive(BaizeSession *session, uint8_t byte, uint32_t now_ms, BaizeFrame *feedback)
 {
     if (!baize_receive(&session->rx, BAIZE_TO_HOST, byte, feedback)) return false;
     if (feedback->type == BAIZE_MAINTENANCE_REPLY) return false;
     if (feedback->type == BAIZE_IMU) {
         uint32_t sample_ms = feedback->imu.sample_ms;
-        if (session->have_imu_sample && session->imu_sample_ms == sample_ms) return false;
+        if (session->awaiting_restart_ack ||
+            (session->have_imu_sample && !later(sample_ms, session->imu_sample_ms))) return false;
         session->have_imu_sample = true;
         session->imu_sample_ms = sample_ms;
         return true;
@@ -37,18 +44,35 @@ bool baize_session_receive(BaizeSession *session, uint8_t byte, uint32_t now_ms,
     /* A late status cannot revive a target queued before the gap. */
     check_timeout(session, now_ms);
     const BaizeStatus *status = &feedback->status;
-    if (session->have_wheel_sample) {
-        uint32_t advance = status->sample_ms - session->wheel_sample_ms;
-        if (advance == 0 && status->drive_state == session->last_drive_state &&
+    uint32_t tick = status->sample_ms;
+    if (session->have_wheel_sample && !later(tick, session->wheel_sample_ms)) {
+        if (tick == session->wheel_sample_ms && status->drive_state == session->last_drive_state &&
             status->stop_reason == session->last_stop_reason) return false;
-        /* A backward tick or a state change at the same tick starts a new baseline. */
-        if (advance == 0 || advance > INT32_MAX) {
-            baize_session_stop(session);
-            session->have_imu_sample = false;
+        /* An old frame cancels motion. Only an advancing post-STOP acknowledgement
+           can establish a younger clock; small reorders keep the high watermark. */
+        bool restart_ack = session->awaiting_restart_ack && session->phase == BAIZE_WAIT_DISABLED &&
+                           later(tick, session->restart_sample_ms) && tick != session->wheel_sample_ms &&
+                           status->drive_state == BAIZE_DISABLED && status->stop_reason == BAIZE_REQUESTED_STOP;
+        if (!restart_ack) {
+            uint64_t possible_uptime = (uint32_t)(now_ms - session->last_wheel_rx_ms)
+                                       + (uint64_t)session->status_timeout_ms;
+            if (!session->awaiting_restart_ack && tick <= possible_uptime &&
+                (status->stop_reason == BAIZE_RESET ||
+                 session->wheel_sample_ms - tick >= session->status_timeout_ms)) {
+                session->awaiting_restart_ack = true;
+                session->restart_sample_ms = tick;
+                baize_session_stop(session);
+            }
+            if (session->phase != BAIZE_WAIT_DISABLED) baize_session_stop(session);
+            return false;
         }
     }
+    if (session->awaiting_restart_ack || (status->stop_reason == BAIZE_RESET &&
+        session->have_wheel_sample && session->last_stop_reason != BAIZE_RESET))
+        session->have_imu_sample = false;
+    session->awaiting_restart_ack = false;
     session->have_wheel_sample = true;
-    session->wheel_sample_ms = status->sample_ms;
+    session->wheel_sample_ms = tick;
     session->last_drive_state = status->drive_state;
     session->last_stop_reason = status->stop_reason;
     session->last_wheel_rx_ms = now_ms;

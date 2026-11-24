@@ -1,6 +1,7 @@
 import binascii
 import struct
 import time
+from collections import deque
 from dataclasses import dataclass
 
 from cobs import cobs
@@ -81,24 +82,43 @@ class Application:
             else:
                 raise RuntimeError("candidate did not report its initial wheel state")
         self.serial.write(b"\x00" + frame(1))
-        stamps, imu_stamps = [], set()
-        previous_angles = None
-        start = time.monotonic()
-        for kind, body in self.packets(start + 1.5):
+        wheel_tick = imu_tick = angles = None
+        imu_times = deque(maxlen=2)
+        count = 0
+        stationary = False
+        last_wheel = 0.0
+        deadline = time.monotonic() + 1.5
+        for kind, body in self.packets(deadline):
+            now = time.monotonic()
             if kind == 0x82 and len(body) == 28:
-                imu_stamps.add(int.from_bytes(body[:4], "little"))
-            if kind == 0x81 and len(body) == 56:
-                stamp, state, reason, _, *wheels = struct.unpack("<IBBH4q4i", body)
-                angles = wheels[:4]
-                consecutive = not stamps or 0 < (stamp - stamps[-1]) % (1 << 32) <= 60
-                if not consecutive or angles != previous_angles:
-                    stamps.clear()
-                previous_angles = angles
-                if state == 0 and reason == 2 and not any(wheels[4:]):
-                    stamps.append(stamp)
-                else:
-                    stamps.clear()
-            if (len(stamps) >= 10 and time.monotonic() - start >= 0.3 and
-                    (not require_imu or len(imu_stamps) >= 2)):
-                return len(imu_stamps) >= 2
+                tick = int.from_bytes(body[:4], "little")
+                gap = 0 if imu_tick is None else (tick - imu_tick) % 2**32
+                if imu_tick is None or 0 < gap < 2**31:
+                    if gap >= 250:
+                        imu_times.clear()
+                    imu_tick = tick
+                    imu_times.append(now)
+                continue
+            if kind != 0x81 or len(body) != 56:
+                continue
+            tick, state, reason, _, *wheels = struct.unpack("<IBBH4q4i", body)
+            gap = 0 if wheel_tick is None else (tick - wheel_tick) % 2**32
+            if wheel_tick is not None and not 0 < gap < 2**31:
+                continue
+            if wheels[:4] != angles or gap > 60 or now - last_wheel > 0.060:
+                count = 0
+            wheel_tick, last_wheel, angles = tick, now, wheels[:4]
+            if state != 0 or reason != 2 or any(wheels[4:]):
+                count, stationary = 0, False
+                continue
+            if count == 0:
+                first_tick, first_rx = tick, now
+            count += 1
+            stationary = count >= 10 and (tick - first_tick) % 2**32 >= 300 and now - first_rx >= 0.3
+            if stationary and len(imu_times) == 2 and now - imu_times[0] < 0.250:
+                # Both sensors timestamp on the same MCU clock, including across wrap.
+                if min((tick - imu_tick) % 2**32, (imu_tick - tick) % 2**32) < 250:
+                    return True
+        if not require_imu and imu_tick is None and stationary and time.monotonic() - last_wheel <= 0.060:
+            return False
         raise RuntimeError("stationary wheel feedback or expected IMU stream missing")

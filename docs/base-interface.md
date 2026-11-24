@@ -54,7 +54,7 @@ bool update(baize::Chassis &chassis, double forward_m_s, double yaw_rate_rad_s)
 | `write(wheels)` | 一次提交四个 `WheelSpeeds.rad_s`，按左前、右前、左后、右后排列。每项必须为有限数且在 ±2 rad/s 内，越界整组拒绝。成功表示目标帧已交给串口，跟踪结果从下一批轮反馈读取。 |
 | `disable()`、`close()` | 停用发送 STOP 并等待新回执，已缓存或只收到半帧的旧回执不能确认本次请求。关闭端口时尽力发送 STOP 再释放资源。C++ 对象析构也会关闭。重连后须重新使能并给新目标。 |
 
-轮端数据在 `state.drive` 中，累计角度 `angle_rad[4]`、角速度 `velocity_rad_s[4]`、电压 `supply_v`（ADC 尚无读数时为 NaN）、驱动状态和停机原因来自同一帧。`state.imu` 单独提供三轴加速度 `acceleration_m_s2` 和三轴角速度 `angular_velocity_rad_s`。采样毫秒是板端 32 位时间，可自然回绕。库用主机单调时钟判断反馈有效期。
+轮端数据在 `state.drive` 中，累计角度 `angle_rad[4]`、角速度 `velocity_rad_s[4]`、电压 `supply_v`（ADC 尚无读数时为 NaN）、驱动状态和停机原因来自同一帧。`state.imu` 单独提供三轴加速度 `acceleration_m_s2` 和三轴角速度 `angular_velocity_rad_s`。两路分别接受向前推进的 32 位板端时间，支持自然回绕。重复或乱序样本不刷新主机单调时钟上的 250 ms 有效期。
 
 持续运动建议每 20 ms 读一次、提交一次最新目标。写入零速仍保持使能。停止提交后，板端按 150 ms 命令时限撤销使能。轮反馈过期或底盘复位时，库请求停机，旧目标随即失效。IMU 缺样只影响六轴数据的有效性。
 
@@ -82,7 +82,7 @@ target_link_libraries(controller PRIVATE baize_host)
 | 使能和给速 | 应用明确请求使能时调用 `baize_session_enable`，返回 true 就立即发送它写出的使能帧。收到已使能反馈后，用 `baize_session_target` 提交四个 mrad/s 值（+1 rad/s 写 1000）。约每 20 ms 调用 `baize_session_next`，即使没有新目标也检查一次，返回 true 就发送该帧。一次提交最多发送一次，持续运动由控制程序持续提交新目标。 |
 | 停机和退出 | `baize_session_stop` 丢弃待发目标，随即用 `baize_session_next` 取出并发送停机帧。继续处理收发，直至会话进入 `BAIZE_READY` 或等待超时。串口读写失败时向调用者报告并关闭串口，重开后重新握手。 |
 
-轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并重新请求停机。上层据此重建角度和时钟基准。相同轮时间、状态和原因的重复帧不会刷新反馈计时。IMU 用独立的采样时间去重。[会话接口](../src/baize_session.h) · [串口接口](../src/serial_port.h)
+轮状态的板端时间自然越过 `UINT32_MAX` 时继续采样。若轮时钟倒退，或同一采样毫秒报告了不同驱动状态或停机原因，会话丢弃待发目标并请求停机。识别到板端重启后，等待新时间轴上向前推进的主动停机回执，再允许使能。上层在重启或重连时重建角度和时钟基准。[会话接口](../src/baize_session.h) · [串口接口](../src/serial_port.h)
 
 ## 启停与异常行为
 

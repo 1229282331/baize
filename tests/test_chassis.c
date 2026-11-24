@@ -104,6 +104,33 @@ static void kinematics(void)
     assert(isnan(baize_to_wheel_speeds(geometry, 1, 0).rad_s[0]));
 }
 
+static void replayed_feedback(void)
+{
+    baize_chassis_state state;
+    const baize_wheel_speeds stopped = {{0}};
+    board_ms = 47501;
+    baize_chassis *chassis = baize_chassis_open("board");
+    assert(chassis && baize_chassis_enable(chassis));
+    acknowledge = false;
+    for (unsigned i = 0; i < 8; ++i) {
+        board_ms = i % 2 ? 47561 : 47541;
+        wheel_sample(BAIZE_ENABLED, BAIZE_RUNNING);
+        imu_sample(i % 2 ? 47544 : 47524);
+        assert(baize_chassis_read(chassis, &state));
+        if (i == 1) assert(state.drive.valid && state.imu.valid);
+        if (i >= 4) assert(!state.drive.valid && !state.imu.valid);
+        now_ms += 100;
+    }
+    assert(!baize_chassis_write(chassis, &stopped));
+    board_ms = 47581;
+    wheel_sample(BAIZE_DISABLED, BAIZE_REQUESTED_STOP);
+    imu_sample(47564);
+    assert(baize_chassis_read(chassis, &state) && state.drive.valid && state.imu.valid);
+    assert(!baize_chassis_write(chassis, &stopped));
+    baize_chassis_close(chassis);
+    acknowledge = true;
+}
+
 int main(void)
 {
     kinematics();
@@ -189,5 +216,8 @@ int main(void)
     baize_chassis_close(chassis);
     acknowledge = false;
     assert(!baize_chassis_open("board"));
+    fault = false;
+    acknowledge = true;
+    replayed_feedback();
     return 0;
 }

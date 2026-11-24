@@ -6,7 +6,7 @@
 
 ```sh
 baize-update info
-sudo baize-update install ./baize-1.1.0.bin
+sudo baize-update install ./baize-1.1.1.bin
 ```
 
 默认端口为 `/dev/ttyUSB0`。两条命令均可加 `--port /dev/serial/by-id/…` 指定设备。安装命令打印 systemd 单元名。SSH 断开后，已启动的本机服务继续运行。重新登录可用 `journalctl -u <单元名>` 查看结果，用 `baize-update info` 核对版本、确认状态和镜像摘要。安装相同镜像会先检查停车，再报告已安装。回到指定旧版时，按同一条命令安装其串口包。
@@ -25,6 +25,8 @@ sudo baize-update install ./baize-1.1.0.bin
 2. MCUboot 将 PC6～PC9 置高中性，使用 USART2、115200 bit/s、8N1 提供 SMP 串口服务。普通启动有约一秒的维护窗口。收到维护报文后，有可启动应用时，连续约十秒无有效报文会复位。有可用旧版时，传输中途退出后可以从头重传。没有可启动应用时，引导程序保持停车等候恢复。
 3. X5 通过 MCUboot 的 direct upload ID 2 写候选区，按候选镜像摘要申请 **test** 并复位。引导程序校验应用，按 2 KiB 页执行 offset swap。交换进度记在 Flash，复位后继续。试运行时板端忽略使能和速度目标。X5 复核版本、摘要、主动停机和新鲜轮反馈。升级前有 IMU 时还要收到新的六轴样本。
 4. 检查通过后，应用只为与自身摘要匹配的确认请求写入运行区尾部的 `image_ok` 标志。正常执行但十秒未确认会软件复位，进入应用早期即卡死由引导程序已经启动的 IWDG 复位。下次启动由 MCUboot 自动恢复上一份已确认镜像。控制程序重新连接并使能、写入新目标后才能运动。已确认后的故障由原有轮控看门狗和停机语义处理。
+
+v1.1.1 的升级器要求板端与主机同时观察到至少 300 ms 连续停车，轮样本间隔最多 60 ms。已装 IMU 要有两笔递增的近期采样，且与最后一笔轮反馈相距小于 250 ms。初次检查最多观察 1.5 s，给启动稍晚的可选 IMU 留出时间。中断上传后直接重试时，工具先让引导程序退出维护，重新读取旧版的能力。若有可启动的运行区却读不到该应用，工具在写入前报错。运行区确实为空时允许首次恢复，此时没有可回退的旧版；恢复后仍须验停车和轮反馈。
 
 试运行依靠新应用遵守上述确认约定和保持看门狗有效。维护口有权装入自行构建的裸机程序，因此这些机制用于开发及运行故障恢复，不能约束主动改写 Flash 或持续错误喂狗的程序。[MCUboot 交换与回退](https://docs.mcuboot.com/design.html) · [串口恢复](https://docs.mcuboot.com/serial_recovery.html) · [smpclient](https://github.com/intercreate/smpclient)
 
@@ -68,7 +70,7 @@ pip install -r zephyr/scripts/requirements-base.txt ./bootloader/mcuboot/scripts
 export GNUARMEMB_TOOLCHAIN_PATH=/usr ZEPHYR_TOOLCHAIN_VARIANT=gnuarmemb
 cd "$repo"
 python firmware/boot/build.py "$work/src" "$work/build"
-python scripts/package_firmware.py --version 1.1.0 --app firmware/build/Release/chassis.bin \
+python scripts/package_firmware.py --version 1.1.1 --app firmware/build/Release/chassis.bin \
   --boot "$work/build/zephyr/zephyr.bin" --output build/update
 ```
 
@@ -80,9 +82,9 @@ sudo /opt/baize-update/venv/bin/pip install ./tools/update
 sudo ln -sfn /opt/baize-update/venv/bin/baize-update /usr/local/bin/baize-update
 ```
 
-使用发布包时，安装命令可改为 `sudo /opt/baize-update/venv/bin/pip install -c x5-requirements.txt ./baize_update-1.1.0-py3-none-any.whl`。运行工具与开发电脑上的 imgtool 分用各自的 Python 环境。
+使用发布包时，安装命令可改为 `sudo /opt/baize-update/venv/bin/pip install -c x5-requirements.txt ./baize_update-1.1.1-py3-none-any.whl`。运行工具与开发电脑上的 imgtool 分用各自的 Python 环境。
 
-本车的 X5 已安装带串口锁的 `baize-monitor`。用 `baize-monitor /dev/ttyUSB0 100` 可在维护前后采集轮状态。发布包中的 `baize-monitor-linux-arm64` 与车上使用的文件相同。
+本车的 X5 已安装带串口锁的 `baize-monitor`。用 `baize-monitor /dev/ttyUSB0 100` 可在维护前后采集轮状态。v1.1.1 交付包在 `linux-arm64/` 提供 X5 工具。
 
 在仓库根目录可以从当前提交重建发布用 wheel。下面的源码归档、解包和输出都在构建目录内。
 
@@ -93,16 +95,18 @@ SOURCE_DATE_EPOCH=$(git log -1 --format=%ct -- tools/update) \
   python3 -m pip wheel --no-deps -w build/update build/update/updater-src.tar.gz
 ```
 
+发布时在安装了升级依赖的 Linux Python 环境运行 `python tests/test_update_health.py`。许可证与署名从同一次构建的编译清单、头文件和工具链提取。运行 `python scripts/package_notices.py --help` 查看输入路径，输出目录随固件和主机工具一起分发。
+
 ### 复做故障试验
 
 在开发电脑已激活 imgtool 的环境运行 `python tests/make_update_fixtures.py firmware/build/Release/chassis.bin build/update-test`，试验目录会得到正常的 `+1`、在复位入口停住的 `+2` 及填满 94,208 字节上限的 `+3`。这些文件仅用于台架验收。先用正式包建立已确认的基线，再在 X5 上用升级工具的 Python 运行以下脚本：
 
 ```sh
 py=/opt/baize-update/venv/bin/python
-$py tests/qualify_update.py interrupt baize-1.1.0+1.bin
-$py tests/qualify_update.py no-confirm baize-1.1.0+1.bin
-$py tests/qualify_update.py early-hang baize-1.1.0+2.bin
-$py tests/qualify_update.py reject baize-1.1.0+1.bin
+$py tests/qualify_update.py interrupt baize-1.1.1+1.bin
+$py tests/qualify_update.py no-confirm baize-1.1.1+1.bin
+$py tests/qualify_update.py early-hang baize-1.1.1+2.bin
+$py tests/qualify_update.py reject baize-1.1.1+1.bin
 ```
 
 每项从一份摘要不同的已确认镜像开始，结束时核对同一基线、四轮停车和原有 IMU。串口断开观察所用的等待时间是复查时刻。上游擦写边界试验可在固定版本的 MCUboot `sim/` 下执行 `cargo test --no-default-features --features swap-offset,validate-primary-slot,bootstrap`，需检出该版本的 `ext/mbedtls` 子模块。[实车故障试验](../tests/qualify_update.py) · [上游模拟器](https://github.com/mcu-tools/mcuboot/tree/ee39e2d694bd827ffd1bebbce2f571a9154e6ec2/sim)

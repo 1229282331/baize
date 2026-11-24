@@ -168,7 +168,7 @@ static void stop_ack_and_restart(void)
     assert(baize_session_target(&host, target));
 
     /* No boot frame was delivered. A younger board clock still cancels the queued target. */
-    assert(wheel_sample(&host, 20, 8, BAIZE_ENABLED, BAIZE_RUNNING));
+    assert(!wheel_sample(&host, 20, 8, BAIZE_ENABLED, BAIZE_RUNNING));
     assert(baize_session_next(&host, 9, &command) && command.type == BAIZE_STOP);
     assert(!baize_session_target(&host, target));
     assert(wheel_sample(&host, 40, 10, BAIZE_DISABLED, BAIZE_REQUESTED_STOP));
@@ -178,7 +178,7 @@ static void stop_ack_and_restart(void)
 
     /* A reboot or fault can land on exactly the preceding sample timestamp. */
     assert(baize_session_target(&host, target));
-    assert(wheel_sample(&host, 60, 14, BAIZE_DISABLED, BAIZE_RESET));
+    assert(!wheel_sample(&host, 60, 14, BAIZE_DISABLED, BAIZE_RESET));
     assert(baize_session_next(&host, 15, &command) && command.type == BAIZE_STOP);
     assert(wheel_sample(&host, 80, 16, BAIZE_DISABLED, BAIZE_REQUESTED_STOP));
     assert(baize_session_enable(&host, 17, &command));
@@ -209,6 +209,14 @@ static void sample_freshness(void)
     assert(report(&host, &imu, 60));
     assert(baize_session_next(&host, 63, &command) && command.type == BAIZE_STOP);
     assert(!baize_session_target(&host, target));
+
+    baize_session_open(&host, 60);
+    imu.imu.sample_ms = UINT32_MAX - 19;
+    assert(report(&host, &imu, 0));
+    imu.imu.sample_ms = 0;
+    assert(report(&host, &imu, 20));
+    imu.imu.sample_ms = UINT32_MAX - 19;
+    assert(!report(&host, &imu, 40));
 }
 
 int main(void)
